@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     const assignments = await adminPb.collection('resource_assignments').getFullList({
       filter: `client_id = "${client.id}"`,
-      sort: '-created',
+      sort: '-id',
     });
 
     const resources = await Promise.all(

@@ -32,9 +32,9 @@ export async function GET(
       adminPb.collection('onboarding_steps').getFullList({ filter: `client_id = "${id}"`, sort: 'step_number' }),
       adminPb.collection('brand_intake').getFullList({ filter: `client_id = "${id}"` }),
       adminPb.collection('brand_profiles').getFullList({ filter: `client_id = "${id}"`, sort: '-version' }),
-      adminPb.collection('deliverables').getFullList({ filter: `client_id = "${id}"`, sort: '-created' }),
+      adminPb.collection('deliverables').getFullList({ filter: `client_id = "${id}"`, sort: '-id' }),
       adminPb.collection('scheduled_calls').getFullList({ filter: `client_id = "${id}"`, sort: 'month' }),
-      adminPb.collection('portal_documents').getFullList({ filter: `client_id = "${id}"`, sort: '-created' }),
+      adminPb.collection('portal_documents').getFullList({ filter: `client_id = "${id}"`, sort: '-id' }),
       adminPb.collection('api_integrations').getFullList({ filter: `client_id = "${id}"` }),
     ]);
 

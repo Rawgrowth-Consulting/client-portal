@@ -14,9 +14,7 @@ export async function GET(req: NextRequest) {
 
     const adminPb = await createAdminClient();
 
-    const clients = await adminPb.collection('clients').getFullList({
-      sort: '-created',
-    });
+    const clients = await adminPb.collection('clients').getFullList({});
 
     return NextResponse.json({ clients });
   } catch (err: any) {

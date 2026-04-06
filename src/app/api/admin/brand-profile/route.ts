@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 
 export async function GET(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = pb.authStore.record;
-    if (user?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -37,13 +36,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = pb.authStore.record;
-    if (user?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -65,7 +63,7 @@ export async function POST(req: NextRequest) {
       const updateData: Record<string, any> = { content, status: resolvedStatus };
       if (resolvedStatus === 'approved') {
         updateData.approved_at = new Date().toISOString();
-        updateData.approved_by = pb.authStore.record?.id;
+        updateData.approved_by = user.id;
       }
       const profile = await adminPb.collection('brand_profiles').update(profileId, updateData);
       return NextResponse.json({ profile });
@@ -96,13 +94,12 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = pb.authStore.record;
-    if (user?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

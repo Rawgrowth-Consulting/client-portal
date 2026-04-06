@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Client } from '@/types';
 
-type SortKey = 'name' | 'company' | 'onboarding_step' | 'health_score' | 'current_month' | 'updated' | 'status';
+type SortKey = 'name' | 'company' | 'onboarding_step' | 'health_score' | 'current_month' | 'status';
 type SortDir = 'asc' | 'desc';
 
 function HealthBadge({ score }: { score: number }) {
@@ -75,7 +75,7 @@ function SortHeader({
 export function ClientsTable({ clients }: { clients: Client[] }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('updated');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   function handleSort(key: SortKey) {
@@ -156,7 +156,7 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
                 <SortHeader label="Onboarding" sortKey="onboarding_step" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <SortHeader label="Health" sortKey="health_score" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <SortHeader label="Month" sortKey="current_month" current={sortKey} direction={sortDir} onClick={handleSort} />
-                <SortHeader label="Last Activity" sortKey="updated" current={sortKey} direction={sortDir} onClick={handleSort} />
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>Last Activity</th>
                 <SortHeader label="Status" sortKey="status" current={sortKey} direction={sortDir} onClick={handleSort} />
               </tr>
             </thead>
@@ -205,7 +205,7 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
                     {c.current_month}
                   </td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    {formatDate(c.updated)}
+                    {(c as any).updated ? formatDate((c as any).updated) : '-'}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={c.status} />
