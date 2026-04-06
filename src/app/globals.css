@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-inter);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #060B08;
+  --foreground: rgba(255,255,255,0.92);
+  --card: #0A1210;
+  --card-foreground: rgba(255,255,255,0.92);
+  --popover: #0A1210;
+  --popover-foreground: rgba(255,255,255,0.92);
+  --primary: #0CBF6A;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(10,148,82,0.08);
+  --secondary-foreground: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.03);
+  --muted-foreground: rgba(255,255,255,0.6);
+  --accent: rgba(10,148,82,0.04);
+  --accent-foreground: rgba(255,255,255,0.92);
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: rgba(255,255,255,0.06);
+  --input: rgba(255,255,255,0.10);
+  --ring: #0CBF6A;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  line-height: 1.7;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+::selection {
+  background: #0CBF6A;
+  color: #fff;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.05) 40%, transparent 50%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 0 40px rgba(12,191,106,.25), 0 4px 24px rgba(0,0,0,.4);
+}
+.btn-shine:hover {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 0 60px rgba(12,191,106,.3), 0 8px 40px rgba(0,0,0,.5);
+}
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.12);
+  border-bottom-color: transparent;
+  pointer-events: none;
+}
+
+/* Markdown rendered content */
+.prose-portal h1 { font-size: 1.5rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: rgba(255,255,255,0.92); }
+.prose-portal h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; color: rgba(255,255,255,0.92); }
+.prose-portal h3 { font-size: 1.1rem; font-weight: 500; margin-top: 1.25rem; margin-bottom: 0.5rem; color: rgba(255,255,255,0.85); }
+.prose-portal p { margin-bottom: 0.75rem; color: rgba(255,255,255,0.6); line-height: 1.7; }
+.prose-portal ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.prose-portal li { color: rgba(255,255,255,0.6); margin-bottom: 0.25rem; }
+.prose-portal strong { color: rgba(255,255,255,0.92); font-weight: 600; }
+.prose-portal blockquote { border-left: 2px solid #0CBF6A; padding-left: 1rem; margin: 1rem 0; color: rgba(255,255,255,0.5); font-style: italic; }
+.prose-portal hr { border-color: rgba(255,255,255,0.06); margin: 1.5rem 0; }
+.prose-portal table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.prose-portal th { text-align: left; padding: 0.5rem; font-weight: 500; color: rgba(255,255,255,0.7); border-bottom: 1px solid rgba(255,255,255,0.1); }
+.prose-portal td { padding: 0.5rem; color: rgba(255,255,255,0.6); border-bottom: 1px solid rgba(255,255,255,0.04); }
