@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { sendSlackMessage } from '@/lib/slack';
 
 export async function POST(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const userId = pb.authStore.record?.id;
+    const userId = user.id;
     const { platform, key_name, key_value } = await req.json();
 
     if (!key_value) return NextResponse.json({ error: 'Key value required' }, { status: 400 });

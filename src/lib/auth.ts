@@ -1,14 +1,14 @@
-import { createServerClient } from './pb-server';
+import { getAuthUser, createAdminClient } from './pb-server';
 import { redirect } from 'next/navigation';
 import type { Client } from '@/types';
 
 export async function getAuthenticatedClient(): Promise<{ pb: any; client: Client } | null> {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) return null;
+    const user = await getAuthUser();
+    if (!user) return null;
 
-    const userId = pb.authStore.record?.id;
-    if (!userId) return null;
+    const userId = user.id;
+    const pb = await createAdminClient();
 
     const clients = await pb.collection('clients').getFullList({
       filter: `user_id = "${userId}"`,
@@ -28,9 +28,17 @@ export async function requireAuth(): Promise<{ pb: any; client: Client }> {
 }
 
 export async function requireAdmin(): Promise<{ pb: any; client: Client }> {
-  const result = await requireAuth();
-  if (result.client.role !== 'admin') redirect('/dashboard');
-  return result;
+  const user = await getAuthUser();
+  if (!user) redirect('/login');
+
+  const pb = await createAdminClient();
+  const clients = await pb.collection('clients').getFullList({
+    filter: `user_id = "${user.id}"`,
+  });
+  if (clients.length === 0) redirect('/login');
+  const client = clients[0] as unknown as Client;
+  if (client.role !== 'admin') redirect('/dashboard');
+  return { pb, client };
 }
 
 export function getOnboardingRedirect(client: Client): string {

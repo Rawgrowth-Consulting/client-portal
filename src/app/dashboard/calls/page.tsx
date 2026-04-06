@@ -1,4 +1,4 @@
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { redirect } from 'next/navigation';
 import type { ScheduledCall } from '@/types';
 
@@ -26,10 +26,10 @@ function isUpcoming(call: ScheduledCall): boolean {
 }
 
 export default async function CallsPage() {
-  const pb = await createServerClient();
-  if (!pb.authStore.isValid) redirect('/login');
+  const user = await getAuthUser();
+  if (!user) redirect('/login');
 
-  const userId = pb.authStore.record?.id;
+  const userId = user.id;
   const adminPb = await createAdminClient();
 
   const clients = await adminPb.collection('clients').getFullList({

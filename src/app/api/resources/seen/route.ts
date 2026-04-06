@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 
 export async function POST(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { assignment_id } = await req.json();
     if (!assignment_id) return NextResponse.json({ error: 'Missing assignment_id' }, { status: 400 });

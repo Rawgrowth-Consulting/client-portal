@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { redirect } from 'next/navigation';
 
 const STEPS = [
@@ -13,15 +13,16 @@ const STEPS = [
 ];
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
-  const pb = await createServerClient();
-  if (!pb.authStore.isValid) redirect('/login');
+  const user = await getAuthUser();
+  if (!user) redirect('/login');
 
-  const userId = pb.authStore.record?.id;
+  const userId = user.id;
   let currentStep = 1;
   let clientName = '';
 
   try {
-    const clients = await pb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
+    const adminPb = await createAdminClient();
+    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
     if (clients[0]) {
       currentStep = clients[0].onboarding_step || 1;
       clientName = clients[0].name || '';

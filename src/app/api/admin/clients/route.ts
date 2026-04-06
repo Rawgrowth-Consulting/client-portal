@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 
 export async function GET(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = pb.authStore.record;
-    if (user?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

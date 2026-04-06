@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
@@ -13,17 +13,16 @@ const NAV_ITEMS = [
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pb = await createServerClient();
-  if (!pb.authStore.isValid) redirect('/login');
+  const user = await getAuthUser();
+  if (!user) redirect('/login');
 
-  const userId = pb.authStore.record?.id;
+  const userId = user.id;
   let clientName = '';
   let company = '';
   let unseenResources = 0;
 
   try {
-    const adminPb = (await import('@/lib/pb-server')).createAdminClient;
-    const admin = await adminPb();
+    const admin = await createAdminClient();
     const clients = await admin.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
     if (clients[0]) {
       clientName = clients[0].name || '';

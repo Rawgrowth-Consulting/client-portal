@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 
 export async function GET(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const userId = pb.authStore.record?.id;
+    const userId = user.id;
     const adminPb = await createAdminClient();
 
     const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
@@ -25,10 +25,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const pb = await createServerClient();
-    if (!pb.authStore.isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const userId = pb.authStore.record?.id;
+    const userId = user.id;
     const { section_id, data } = await req.json();
 
     const adminPb = await createAdminClient();

@@ -1,4 +1,4 @@
-import { createServerClient, createAdminClient } from '@/lib/pb-server';
+import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { redirect } from 'next/navigation';
 import type { Deliverable } from '@/types';
 import JourneyTimeline from './JourneyTimeline';
@@ -11,10 +11,10 @@ const MONTH_PLAN: Record<number, { label: string; focus: string }> = {
 };
 
 export default async function JourneyPage() {
-  const pb = await createServerClient();
-  if (!pb.authStore.isValid) redirect('/login');
+  const user = await getAuthUser();
+  if (!user) redirect('/login');
 
-  const userId = pb.authStore.record?.id;
+  const userId = user.id;
   const adminPb = await createAdminClient();
 
   const clients = await adminPb.collection('clients').getFullList({

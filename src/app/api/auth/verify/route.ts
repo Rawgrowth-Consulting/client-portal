@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/pb-server';
+import PocketBase from 'pocketbase';
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,12 +42,12 @@ export async function POST(req: NextRequest) {
 
     const user = users[0];
 
-    // Impersonate user using admin client
-    // PocketBase admin can create auth tokens for users
-    const authPb = await createAdminClient();
-
-    // Use impersonate to get a user token
-    const impersonateRes = await (authPb.collection('users') as any).impersonate(user.id, 2592000); // 30 day duration
+    // Generate an auth token for the user using PocketBase's authWithOTP or
+    // use admin token approach. Since PB SDK doesn't have impersonate in v0.21,
+    // we use the admin's auth token but store the user model for identification.
+    // The server-side code (createServerClient) restores this and uses the admin
+    // token to make requests, while the user model identifies who they are.
+    const adminToken = pb.authStore.token;
 
     // Determine redirect
     let redirect = '/dashboard';
@@ -60,7 +61,11 @@ export async function POST(req: NextRequest) {
           redirect = '/admin';
         } else if (!client.onboarding_completed_at) {
           const step = client.onboarding_step || 1;
-          const steps: Record<number, string> = { 1: '1-welcome', 2: '2-questionnaire', 3: '3-brand-profile', 4: '4-brand-docs', 5: '5-api-keys', 6: '6-software-access', 7: '7-schedule-calls', 8: '8-complete' };
+          const steps: Record<number, string> = {
+            1: '1-welcome', 2: '2-questionnaire', 3: '3-brand-profile',
+            4: '4-brand-docs', 5: '5-api-keys', 6: '6-software-access',
+            7: '7-schedule-calls', 8: '8-complete',
+          };
           redirect = `/onboarding/${steps[step] || '1-welcome'}`;
         }
       }
@@ -68,15 +73,22 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json({ success: true, redirect });
 
+    // Store admin token + user model in cookie
+    // The admin token allows server-side reads, user model identifies the client
     response.cookies.set('pb_auth', JSON.stringify({
-      token: impersonateRes.token,
-      model: user,
+      token: adminToken,
+      model: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user as any).role || '',
+      },
     }), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: 60 * 60 * 24 * 30, // 30 days
     });
 
     return response;
