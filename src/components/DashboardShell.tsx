@@ -60,6 +60,11 @@ const icons = {
       <path d="M8.5 5H10V3.5A1.5 1.5 0 1 0 8.5 5" />
     </svg>
   ),
+  activity: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  ),
   settings: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -88,6 +93,7 @@ const navItems: NavItem[] = [
   { label: 'Resources', href: '/dashboard/resources', icon: icons.resources },
   { label: 'Calls', href: '/dashboard/calls', icon: icons.calls },
   { label: 'Slack', href: '/dashboard/slack', icon: icons.slack },
+  { label: 'Activity', href: '/dashboard/activity', icon: icons.activity },
   { label: 'Settings', href: '/dashboard/settings', icon: icons.settings },
 ];
 

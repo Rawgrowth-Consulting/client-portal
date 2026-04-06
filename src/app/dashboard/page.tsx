@@ -1,6 +1,7 @@
 import { getAuthUser, createAdminClient } from '@/lib/pb-server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import ActivityFeed from '@/components/ActivityFeed';
 
 export default async function DashboardHome() {
   const user = await getAuthUser();
@@ -110,24 +111,19 @@ export default async function DashboardHome() {
         ))}
       </div>
 
-      {/* Recent Activity */}
+      {/* AI Department Activity Feed */}
       <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-6">
-        <h3 className="mb-4 text-sm font-medium uppercase tracking-wider text-[rgba(255,255,255,0.4)]">Recent Activity</h3>
-        {deliverables.length > 0 ? (
-          <div className="space-y-3">
-            {deliverables.slice(0, 5).map((d: any) => (
-              <div key={d.id} className="flex items-center gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] px-4 py-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0CBF6A" strokeWidth="2"><path d="M20 6L9 17L4 12"/></svg>
-                <span className="text-sm text-[rgba(255,255,255,0.7)]">{d.step_name}</span>
-                <span className="ml-auto text-xs text-[rgba(255,255,255,0.3)]">
-                  {d.completed_at ? new Date(d.completed_at).toLocaleDateString() : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-[rgba(255,255,255,0.4)]">No activity yet. Complete your onboarding to get started.</p>
-        )}
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-medium uppercase tracking-wider text-[rgba(255,255,255,0.4)]">AI Department Activity</h3>
+          <Link
+            href="/dashboard/activity"
+            className="text-xs font-medium transition-colors hover:text-white"
+            style={{ color: '#0CBF6A' }}
+          >
+            View all
+          </Link>
+        </div>
+        <ActivityFeed compact={true} maxItems={5} showFilters={false} />
       </div>
     </div>
   );
