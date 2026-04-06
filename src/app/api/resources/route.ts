@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const resources = await Promise.all(
       assignments.map(async (assignment) => {
         try {
-          const resource = await adminPb.collection('resources').getOne(assignment.resource_id);
+          const resource = await adminPb.collection('portal_resources').getOne(assignment.resource_id);
           return {
             ...resource,
             assignment_id: assignment.id,

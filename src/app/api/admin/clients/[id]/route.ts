@@ -35,7 +35,7 @@ export async function GET(
       adminPb.collection('brand_profiles').getFullList({ filter: `client_id = "${id}"`, sort: '-version' }),
       adminPb.collection('deliverables').getFullList({ filter: `client_id = "${id}"`, sort: '-created' }),
       adminPb.collection('scheduled_calls').getFullList({ filter: `client_id = "${id}"`, sort: 'month' }),
-      adminPb.collection('documents').getFullList({ filter: `client_id = "${id}"`, sort: '-created' }),
+      adminPb.collection('portal_documents').getFullList({ filter: `client_id = "${id}"`, sort: '-created' }),
       adminPb.collection('api_integrations').getFullList({ filter: `client_id = "${id}"` }),
     ]);
 

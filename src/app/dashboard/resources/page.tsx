@@ -22,7 +22,7 @@ export default async function ResourcesPage() {
 
     const resourceIds = assignments.map(a => a.resource_id);
     if (resourceIds.length > 0) {
-      const allResources = await adminPb.collection('resources').getFullList();
+      const allResources = await adminPb.collection('portal_resources').getFullList();
       resources = allResources
         .filter(r => resourceIds.includes(r.id) || r.target_all)
         .map(r => {
@@ -31,7 +31,7 @@ export default async function ResourcesPage() {
         });
     } else {
       // Also get target_all resources
-      resources = (await adminPb.collection('resources').getFullList({ filter: 'target_all = true' }))
+      resources = (await adminPb.collection('portal_resources').getFullList({ filter: 'target_all = true' }))
         .map(r => ({ ...r, seen_at: null, assignment_id: null }));
     }
   } catch {}

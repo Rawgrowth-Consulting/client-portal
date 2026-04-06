@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
-    const doc = await adminPb.collection('documents').create({
+    const doc = await adminPb.collection('portal_documents').create({
       client_id: clients[0].id,
       type: type || 'other',
       file: file,

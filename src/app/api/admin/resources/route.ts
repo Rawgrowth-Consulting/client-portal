@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
         resourceForm.append(key, val);
       }
       resourceForm.append('file', file);
-      resource = await adminPb.collection('resources').create(resourceForm);
+      resource = await adminPb.collection('portal_resources').create(resourceForm);
     } else {
-      resource = await adminPb.collection('resources').create(resourceData);
+      resource = await adminPb.collection('portal_resources').create(resourceData);
     }
 
     // Determine target clients
