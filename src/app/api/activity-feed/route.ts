@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { createSupabaseClient, ActivityEvent } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthUser();
@@ -8,8 +7,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Get the client record from PocketBase to find the client_id
   const adminPb = await createAdminClient();
+
   const clients = await adminPb.collection('clients').getFullList({
     filter: `user_id = "${user.id}"`,
   });
@@ -19,46 +18,61 @@ export async function GET(request: NextRequest) {
   }
 
   const client = clients[0];
-  const supabase = createSupabaseClient();
 
-  // Parse query params
   const { searchParams } = new URL(request.url);
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
   const offset = parseInt(searchParams.get('offset') || '0');
   const eventType = searchParams.get('type');
 
-  // Query activity feed from Supabase
-  // Match on client PocketBase ID or the demo client
-  let query = supabase
-    .from('client_activity_feed')
-    .select('*')
-    .or(`client_id.eq.${client.id},client_id.eq.demo-client`)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+  try {
+    let filter = `client_id = "${client.id}"`;
+    if (eventType) {
+      filter += ` && event_type = "${eventType}"`;
+    }
 
-  if (eventType) {
-    query = query.eq('event_type', eventType);
+    const events = await adminPb.collection('activity_events').getList(
+      Math.floor(offset / limit) + 1,
+      limit,
+      {
+        filter,
+        sort: '-created',
+      }
+    );
+
+    // Count unread
+    const unreadFilter = `client_id = "${client.id}" && read_at = null`;
+    let unreadCount = 0;
+    try {
+      const unread = await adminPb.collection('activity_events').getList(1, 1, {
+        filter: unreadFilter,
+      });
+      unreadCount = unread.totalItems;
+    } catch {}
+
+    // Normalize to match ActivityEvent shape
+    const normalized = events.items.map((e: any) => ({
+      id: e.id,
+      client_id: e.client_id,
+      event_type: e.event_type,
+      title: e.title,
+      description: e.description || null,
+      agent_name: e.agent_name,
+      metadata: typeof e.metadata === 'string' ? JSON.parse(e.metadata || '{}') : (e.metadata || {}),
+      severity: e.severity || 'info',
+      created_at: e.created,
+      read_at: e.read_at || null,
+    }));
+
+    return NextResponse.json({
+      events: normalized,
+      unread_count: unreadCount,
+      has_more: offset + limit < events.totalItems,
+    });
+  } catch (err: any) {
+    console.error('Activity feed error:', err);
+    // Return empty feed on error rather than 500 — collection may not exist yet
+    return NextResponse.json({ events: [], unread_count: 0, has_more: false });
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Activity feed error:', error);
-    return NextResponse.json({ error: 'Failed to fetch activity feed' }, { status: 500 });
-  }
-
-  // Get unread count
-  const { count } = await supabase
-    .from('client_activity_feed')
-    .select('id', { count: 'exact', head: true })
-    .or(`client_id.eq.${client.id},client_id.eq.demo-client`)
-    .is('read_at', null);
-
-  return NextResponse.json({
-    events: data as ActivityEvent[],
-    unread_count: count || 0,
-    has_more: (data?.length || 0) === limit,
-  });
 }
 
 // Mark events as read
@@ -75,16 +89,19 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'event_ids array required' }, { status: 400 });
   }
 
-  const supabase = createSupabaseClient();
+  try {
+    const adminPb = await createAdminClient();
+    const now = new Date().toISOString();
 
-  const { error } = await supabase
-    .from('client_activity_feed')
-    .update({ read_at: new Date().toISOString() })
-    .in('id', event_ids);
+    await Promise.all(
+      event_ids.map((id: string) =>
+        adminPb.collection('activity_events').update(id, { read_at: now })
+      )
+    );
 
-  if (error) {
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('Mark read error:', err);
     return NextResponse.json({ error: 'Failed to mark as read' }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true });
 }
