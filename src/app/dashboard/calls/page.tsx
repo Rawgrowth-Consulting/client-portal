@@ -1,5 +1,3 @@
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { redirect } from 'next/navigation';
 import type { ScheduledCall } from '@/types';
 
 function formatCallDate(dateStr: string | null): string {
@@ -26,26 +24,7 @@ function isUpcoming(call: ScheduledCall): boolean {
 }
 
 export default async function CallsPage() {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
-
-  const userId = user.id;
-  const adminPb = await createAdminClient();
-
-  const clients = await adminPb.collection('clients').getFullList({
-    filter: `user_id = "${userId}"`,
-  });
-  if (clients.length === 0) redirect('/login');
-  const client = clients[0];
-
-  let calls: ScheduledCall[] = [];
-  try {
-    const records = await adminPb.collection('scheduled_calls').getFullList({
-      filter: `client_id = "${client.id}"`,
-      sort: 'month,week',
-    });
-    calls = records as unknown as ScheduledCall[];
-  } catch {}
+  const calls: ScheduledCall[] = [];
 
   const upcoming = calls.filter((c) => isUpcoming(c));
   const past = calls.filter((c) => !isUpcoming(c));

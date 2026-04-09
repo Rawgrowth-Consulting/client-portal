@@ -1,26 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
+import { Id } from '../../../../convex/_generated/dataModel';
 
 export default function WelcomeStep() {
   const router = useRouter();
   const [slackUrl, setSlackUrl] = useState('');
   const [slackChannel, setSlackChannel] = useState('');
+  const [messagingChannel, setMessagingChannel] = useState<'telegram' | 'slack' | 'whatsapp'>('slack');
+  const [messagingHandle, setMessagingHandle] = useState('');
   const [loading, setLoading] = useState(false);
+  const [clientId, setClientId] = useState<string | null>(null);
+
+  const updateStep = useMutation(api.clients.updateOnboardingStep);
+  const updateMessaging = useMutation(api.clients.updateMessaging);
+
+  useEffect(() => {
+    setClientId(localStorage.getItem('rg_client_id'));
+  }, []);
 
   async function handleComplete() {
+    if (!clientId) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/onboarding/step', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          step: 1,
-          data: { slack_workspace_url: slackUrl, slack_channel: slackChannel },
-        }),
+      // Save messaging preference
+      if (messagingHandle) {
+        await updateMessaging({
+          clientId: clientId as Id<'clients'>,
+          channel: messagingChannel,
+          handle: messagingHandle,
+        });
+      }
+
+      // Advance to step 2
+      await updateStep({
+        clientId: clientId as Id<'clients'>,
+        step: 2,
       });
-      if (res.ok) router.push('/onboarding/2-questionnaire');
+      router.push('/onboarding/2-questionnaire');
     } catch (err) {
       console.error(err);
     } finally {
@@ -46,8 +66,38 @@ export default function WelcomeStep() {
         </div>
       </div>
 
-      {/* Slack section */}
       <div className="space-y-6">
+        {/* Messaging channel selection */}
+        <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-6">
+          <h3 className="mb-2 text-base font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>How do you want to talk to your AI agents?</h3>
+          <p className="mb-4 text-sm text-[rgba(255,255,255,0.5)]">Pick your preferred messaging channel. Your agents will live here.</p>
+
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            {(['telegram', 'slack', 'whatsapp'] as const).map((ch) => (
+              <button
+                key={ch}
+                onClick={() => setMessagingChannel(ch)}
+                className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                  messagingChannel === ch
+                    ? 'border-[#0CBF6A]/50 bg-[rgba(12,191,106,0.08)] text-[#0CBF6A]'
+                    : 'border-[rgba(255,255,255,0.06)] text-[rgba(255,255,255,0.5)] hover:border-[rgba(255,255,255,0.15)]'
+                }`}
+              >
+                {ch === 'telegram' ? 'Telegram' : ch === 'slack' ? 'Slack' : 'WhatsApp'}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            value={messagingHandle}
+            onChange={(e) => setMessagingHandle(e.target.value)}
+            placeholder={messagingChannel === 'telegram' ? '@username' : messagingChannel === 'slack' ? 'your-workspace.slack.com' : '+1 234 567 8900'}
+            className="w-full rounded-lg border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.05)] px-4 py-3 text-sm text-white placeholder-[rgba(255,255,255,0.3)] outline-none focus:border-[#0CBF6A]/50"
+          />
+        </div>
+
+        {/* Slack section */}
         <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-6">
           <h3 className="mb-2 text-base font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>Join our Slack</h3>
           <p className="mb-4 text-sm text-[rgba(255,255,255,0.5)]">Your dedicated channel for direct communication with the Rawgrowth team.</p>

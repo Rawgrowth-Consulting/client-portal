@@ -63,8 +63,8 @@ export default function SettingsPage() {
     }
   }
 
-  function handleSignOut() {
-    document.cookie = 'pb_auth=; path=/; max-age=0';
+  async function handleSignOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/login';
   }
 

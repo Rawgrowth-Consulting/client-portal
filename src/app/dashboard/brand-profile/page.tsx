@@ -1,25 +1,7 @@
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { redirect } from 'next/navigation';
 import BrandProfileView from '@/components/dashboard/BrandProfileView';
 
 export default async function BrandProfilePage() {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
-
-  const userId = user.id;
-  const adminPb = await createAdminClient();
-
-  const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
-  if (clients.length === 0) redirect('/login');
-
-  let profile = null;
-  try {
-    const profiles = await adminPb.collection('brand_profiles').getFullList({
-      filter: `client_id = "${clients[0].id}"`,
-      sort: '-version',
-    });
-    profile = (profiles[0] as any) || null;
-  } catch {}
+  const profile = null;
 
   return (
     <div>

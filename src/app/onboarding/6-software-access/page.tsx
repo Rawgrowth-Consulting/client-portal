@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
+import { Id } from '../../../../convex/_generated/dataModel';
 
 const PLATFORMS = [
   {
@@ -40,31 +43,44 @@ export default function SoftwareAccessStep() {
   const router = useRouter();
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(PLATFORMS[0].id);
+  const [clientId, setClientId] = useState<string | null>(null);
+
+  const confirmAccess = useMutation(api.softwareAccess.confirm);
+  const updateStep = useMutation(api.clients.updateOnboardingStep);
+
+  useEffect(() => {
+    setClientId(localStorage.getItem('rg_client_id'));
+  }, []);
 
   function toggleConfirm(id: string) {
+    if (!clientId) return;
+    const isConfirmed = confirmed.has(id);
+
     setConfirmed(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
+      if (isConfirmed) next.delete(id);
       else next.add(id);
       return next;
     });
+
+    if (!isConfirmed) {
+      confirmAccess({
+        clientId: clientId as Id<'clients'>,
+        platform: id,
+        accessType: 'admin',
+      }).catch(console.error);
+    }
   }
 
   async function handleContinue() {
-    await fetch('/api/onboarding/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 6, data: { confirmed_platforms: Array.from(confirmed) } }),
-    });
+    if (!clientId) return;
+    await updateStep({ clientId: clientId as Id<'clients'>, step: 7 });
     router.push('/onboarding/7-schedule-calls');
   }
 
   async function handleSkip() {
-    await fetch('/api/onboarding/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 6, data: { skipped: true } }),
-    });
+    if (!clientId) return;
+    await updateStep({ clientId: clientId as Id<'clients'>, step: 7 });
     router.push('/onboarding/7-schedule-calls');
   }
 
@@ -76,7 +92,7 @@ export default function SoftwareAccessStep() {
 
       <div className="space-y-3">
         {PLATFORMS.map((platform) => (
-          <div key={platform.id} className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] overflow-hidden">
+          <div key={platform.id} className="overflow-hidden rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210]">
             <button
               onClick={() => setExpanded(expanded === platform.id ? null : platform.id)}
               className="flex w-full items-center justify-between p-5"

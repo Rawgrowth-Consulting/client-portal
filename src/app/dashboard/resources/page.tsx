@@ -1,40 +1,7 @@
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { redirect } from 'next/navigation';
 import ResourcesGrid from '@/components/dashboard/ResourcesGrid';
 
 export default async function ResourcesPage() {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
-
-  const userId = user.id;
-  const adminPb = await createAdminClient();
-  const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
-  if (clients.length === 0) redirect('/login');
-
-  const clientId = clients[0].id;
-
-  // Get all resources assigned to this client
-  let resources: any[] = [];
-  try {
-    const assignments = await adminPb.collection('resource_assignments').getFullList({
-      filter: `client_id = "${clientId}"`,
-    });
-
-    const resourceIds = assignments.map(a => a.resource_id);
-    if (resourceIds.length > 0) {
-      const allResources = await adminPb.collection('portal_resources').getFullList();
-      resources = allResources
-        .filter(r => resourceIds.includes(r.id) || r.target_all)
-        .map(r => {
-          const assignment = assignments.find(a => a.resource_id === r.id);
-          return { ...r, seen_at: assignment?.seen_at || null, assignment_id: assignment?.id };
-        });
-    } else {
-      // Also get target_all resources
-      resources = (await adminPb.collection('portal_resources').getFullList({ filter: 'target_all = true' }))
-        .map(r => ({ ...r, seen_at: null, assignment_id: null }));
-    }
-  } catch {}
+  const resources: any[] = [];
 
   return (
     <div>

@@ -1,10 +1,6 @@
-import { getAuthUser } from '@/lib/pb-server';
-import { redirect } from 'next/navigation';
 import ActivityFeed from '@/components/ActivityFeed';
 
 export default async function ActivityPage() {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
 
   return (
     <div className="px-6 py-8 lg:px-10">

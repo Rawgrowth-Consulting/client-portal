@@ -2,53 +2,64 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery, useMutation, useAction } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
+import { Id } from '../../../../convex/_generated/dataModel';
 import ReactMarkdown from 'react-markdown';
 
 export default function BrandProfileStep() {
   const router = useRouter();
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
+  const [clientId, setClientId] = useState<string | null>(null);
+
+  const updateStep = useMutation(api.clients.updateOnboardingStep);
+  const approveProfile = useMutation(api.brandProfile.approve);
+  const regenerateProfile = useMutation(api.brandProfile.regenerate);
+  const generateProfile = useAction(api.brandProfile.generate);
 
   useEffect(() => {
-    async function loadProfile() {
-      try {
-        const res = await fetch('/api/onboarding/brand-profile');
-        if (res.ok) {
-          const data = await res.json();
-          setProfile(data.profile);
-        }
-      } catch {} finally {
-        setLoading(false);
-      }
-    }
-    loadProfile();
-    // Poll while generating
-    const interval = setInterval(loadProfile, 5000);
-    return () => clearInterval(interval);
+    setClientId(localStorage.getItem('rg_client_id'));
   }, []);
 
+  const profile = useQuery(
+    api.brandProfile.get,
+    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
+  );
+
+  // Trigger generation if profile exists in "generating" state with empty content
+  useEffect(() => {
+    if (profile?.status === 'generating' && !profile.content && clientId) {
+      generateProfile({ clientId: clientId as Id<'clients'> }).catch(console.error);
+    }
+  }, [profile?.status, profile?.content, clientId, generateProfile]);
+
   async function handleApprove() {
-    await fetch('/api/onboarding/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 3, data: { approved: true } }),
+    if (!clientId || !profile) return;
+    await approveProfile({
+      profileId: profile._id,
+      approvedBy: clientId,
+    });
+    await updateStep({
+      clientId: clientId as Id<'clients'>,
+      step: 4,
     });
     router.push('/onboarding/4-brand-docs');
   }
 
   async function handleRequestChanges() {
-    await fetch('/api/onboarding/brand-profile/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedback }),
+    if (!clientId) return;
+    await regenerateProfile({
+      clientId: clientId as Id<'clients'>,
+      feedback,
     });
+    // Trigger regeneration
+    generateProfile({ clientId: clientId as Id<'clients'> }).catch(console.error);
     setShowFeedback(false);
     setFeedback('');
   }
 
-  if (loading) {
+  if (!profile) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[#0CBF6A] border-t-transparent" />
@@ -57,7 +68,7 @@ export default function BrandProfileStep() {
     );
   }
 
-  if (profile?.status === 'generating') {
+  if (profile.status === 'generating') {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[#0CBF6A] border-t-transparent" />
@@ -75,7 +86,7 @@ export default function BrandProfileStep() {
 
       <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-6 md:p-8">
         <div className="prose-portal">
-          <ReactMarkdown>{profile?.content || 'No profile generated yet.'}</ReactMarkdown>
+          <ReactMarkdown>{profile.content || 'No profile generated yet.'}</ReactMarkdown>
         </div>
       </div>
 

@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
+import { Id } from '../../../../convex/_generated/dataModel';
 
 const CALLS = [
   { id: 'week1', title: 'Week 1 Kickoff', description: 'Meet the team, review your brand profile, set goals for Month 1', duration: '30-45 min', month: 1, week: 1 },
@@ -15,36 +18,50 @@ const CALENDLY_BASE = 'https://calendly.com/chriswestt/rawgrowth-discovery';
 export default function ScheduleCallsStep() {
   const router = useRouter();
   const [booked, setBooked] = useState<Set<string>>(new Set());
+  const [clientId, setClientId] = useState<string | null>(null);
+
+  const scheduleCall = useMutation(api.scheduledCalls.schedule);
+  const updateStep = useMutation(api.clients.updateOnboardingStep);
+
+  useEffect(() => {
+    setClientId(localStorage.getItem('rg_client_id'));
+  }, []);
 
   function handleBook(callId: string) {
     window.open(CALENDLY_BASE, '_blank');
-    // Allow manual marking
   }
 
   function toggleBooked(callId: string) {
+    if (!clientId) return;
+    const call = CALLS.find((c) => c.id === callId);
+    if (!call) return;
+
     setBooked(prev => {
       const next = new Set(prev);
       if (next.has(callId)) next.delete(callId);
       else next.add(callId);
       return next;
     });
+
+    // Save to Convex
+    scheduleCall({
+      clientId: clientId as Id<'clients'>,
+      title: call.title,
+      month: call.month,
+      week: call.week,
+      scheduledAt: Date.now(),
+    }).catch(console.error);
   }
 
   async function handleContinue() {
-    await fetch('/api/onboarding/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 7, data: { booked_calls: Array.from(booked) } }),
-    });
+    if (!clientId) return;
+    await updateStep({ clientId: clientId as Id<'clients'>, step: 8 });
     router.push('/onboarding/8-complete');
   }
 
   async function handleSkip() {
-    await fetch('/api/onboarding/step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 7, data: { skipped: true } }),
-    });
+    if (!clientId) return;
+    await updateStep({ clientId: clientId as Id<'clients'>, step: 8 });
     router.push('/onboarding/8-complete');
   }
 

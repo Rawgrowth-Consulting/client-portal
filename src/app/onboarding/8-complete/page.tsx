@@ -33,8 +33,8 @@ export default function CompleteStep() {
       body: JSON.stringify({ step: 8, data: { completed: true } }),
     });
 
-    // Generate setup token
-    fetch('/api/rawclaw/generate-token', { method: 'POST' })
+    // Generate setup token (client_id comes from cookie on server side)
+    fetch('/api/rawclaw/generate-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
       .then((r) => r.json())
       .then((data) => {
         if (data.token) setSetupToken(data.token);
@@ -157,7 +157,7 @@ export default function CompleteStep() {
               </button>
             </div>
             <p className="mt-2 text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              The installer will ask for your setup token. Use it once -- it expires after first use.
+              The installer will prompt for your setup token.
             </p>
           </div>
         </div>

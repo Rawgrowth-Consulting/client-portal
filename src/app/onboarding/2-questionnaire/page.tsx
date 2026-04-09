@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation, useQuery } from 'convex/react';
+import { api } from '../../../../convex/_generated/api';
+import { Id } from '../../../../convex/_generated/dataModel';
 
 interface SectionConfig {
   id: string;
@@ -21,7 +24,7 @@ interface FieldConfig {
 
 const SECTIONS: SectionConfig[] = [
   {
-    id: 'basic_info',
+    id: 'basicInfo',
     title: 'Basic Information',
     fields: [
       { name: 'full_name', label: 'Full Name', type: 'text', required: true },
@@ -33,7 +36,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'social_presence',
+    id: 'socialPresence',
     title: 'Social Media & Digital Presence',
     fields: [
       { name: 'instagram', label: 'Instagram Handle', type: 'text', placeholder: '@handle' },
@@ -48,7 +51,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'origin_story',
+    id: 'originStory',
     title: 'Your Story & Background',
     fields: [
       { name: 'origin', label: 'Tell us your story. How did you get here?', type: 'textarea', helperText: 'What led you to start? Failures or pivots? Transferable skills? (300-500 words)', required: true },
@@ -57,7 +60,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'business_model',
+    id: 'businessModel',
     title: 'Business Model & Revenue',
     fields: [
       { name: 'what_you_sell', label: 'What do you sell?', type: 'textarea', required: true },
@@ -69,7 +72,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'target_audience',
+    id: 'targetAudience',
     title: 'Target Audience & ICP',
     fields: [
       { name: 'ideal_client', label: 'Who is your ideal client?', type: 'textarea', helperText: 'Age, industry, revenue range, location, gender', required: true },
@@ -101,7 +104,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'brand_voice',
+    id: 'brandVoice',
     title: 'Brand Voice & Style',
     fields: [
       { name: 'voice_description', label: 'How would you describe your brand voice?', type: 'textarea', placeholder: 'e.g. authoritative, friendly, no-BS, empathetic', required: true },
@@ -126,7 +129,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'content_messaging',
+    id: 'contentMessaging',
     title: 'Content & Messaging',
     fields: [
       { name: 'posting_frequency', label: 'How often are you posting currently?', type: 'textarea', placeholder: 'Instagram: X/week, YouTube: X/month, etc.' },
@@ -150,7 +153,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'tools_systems',
+    id: 'toolsSystems',
     title: 'Tools & Systems',
     fields: [
       { name: 'tech_stack', label: 'Current tools/platforms', type: 'textarea', helperText: 'CRM, email marketing, scheduling, payments, project management, content creation, analytics' },
@@ -160,7 +163,7 @@ const SECTIONS: SectionConfig[] = [
     ],
   },
   {
-    id: 'additional_context',
+    id: 'additionalContext',
     title: 'Additional Context',
     fields: [
       { name: 'anything_else', label: 'Anything else we should know?', type: 'textarea', helperText: 'Learning style, communication preferences, concerns' },
@@ -179,29 +182,38 @@ export default function QuestionnairePage() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savedSections, setSavedSections] = useState<Set<number>>(new Set());
+  const [clientId, setClientId] = useState<string | null>(null);
 
-  // Load saved data on mount
+  const saveSection = useMutation(api.brandIntake.saveSection);
+  const submitIntake = useMutation(api.brandIntake.submit);
+  const updateStep = useMutation(api.clients.updateOnboardingStep);
+
+  // Load client ID and existing data
   useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await fetch('/api/onboarding/questionnaire');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.intake) {
-            const loaded: Record<string, Record<string, string>> = {};
-            SECTIONS.forEach((section, idx) => {
-              if (data.intake[section.id]) {
-                loaded[section.id] = data.intake[section.id];
-                setSavedSections(prev => new Set(prev).add(idx));
-              }
-            });
-            setFormData(loaded);
-          }
-        }
-      } catch {}
-    }
-    loadData();
+    const id = localStorage.getItem('rg_client_id');
+    setClientId(id);
   }, []);
+
+  const intake = useQuery(
+    api.brandIntake.get,
+    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
+  );
+
+  // Populate form with existing data when intake loads
+  useEffect(() => {
+    if (!intake) return;
+    const loaded: Record<string, Record<string, string>> = {};
+    SECTIONS.forEach((section, idx) => {
+      const data = (intake as any)[section.id];
+      if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+        loaded[section.id] = data;
+        setSavedSections(prev => new Set(prev).add(idx));
+      }
+    });
+    if (Object.keys(loaded).length > 0) {
+      setFormData(loaded);
+    }
+  }, [intake]);
 
   function updateField(sectionId: string, fieldName: string, value: string) {
     setFormData(prev => ({
@@ -210,17 +222,15 @@ export default function QuestionnairePage() {
     }));
   }
 
-  async function saveSection(sectionIndex: number) {
+  async function handleSaveSection(sectionIndex: number) {
+    if (!clientId) return;
     setSaving(true);
     try {
       const section = SECTIONS[sectionIndex];
-      await fetch('/api/onboarding/questionnaire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          section_id: section.id,
-          data: formData[section.id] || {},
-        }),
+      await saveSection({
+        clientId: clientId as Id<'clients'>,
+        section: section.id,
+        data: formData[section.id] || {},
       });
       setSavedSections(prev => new Set(prev).add(sectionIndex));
       if (sectionIndex < SECTIONS.length - 1) {
@@ -234,27 +244,27 @@ export default function QuestionnairePage() {
   }
 
   async function handleSubmit() {
+    if (!clientId) return;
     setSubmitting(true);
     try {
-      // Save last section
-      await saveSection(currentSection);
-
-      // Submit all data and trigger brand profile generation
-      const res = await fetch('/api/brand-profile/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sections: formData }),
+      // Save last section first
+      const section = SECTIONS[currentSection];
+      await saveSection({
+        clientId: clientId as Id<'clients'>,
+        section: section.id,
+        data: formData[section.id] || {},
       });
 
-      if (res.ok) {
-        // Mark step complete
-        await fetch('/api/onboarding/step', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ step: 2, data: { submitted: true } }),
-        });
-        router.push('/onboarding/3-brand-profile');
-      }
+      // Submit intake (creates brand profile in "generating" state)
+      await submitIntake({ clientId: clientId as Id<'clients'> });
+
+      // Update step
+      await updateStep({
+        clientId: clientId as Id<'clients'>,
+        step: 3,
+      });
+
+      router.push('/onboarding/3-brand-profile');
     } catch (err) {
       console.error(err);
     } finally {
@@ -368,7 +378,7 @@ export default function QuestionnairePage() {
           </button>
         ) : (
           <button
-            onClick={() => saveSection(currentSection)}
+            onClick={() => handleSaveSection(currentSection)}
             disabled={saving}
             className="btn-shine rounded-xl bg-[#0CBF6A] px-8 py-3 text-sm font-bold text-white transition-transform duration-300 hover:-translate-y-0.5 disabled:opacity-50"
           >

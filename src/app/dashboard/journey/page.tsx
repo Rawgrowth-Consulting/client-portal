@@ -1,5 +1,3 @@
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { redirect } from 'next/navigation';
 import type { Deliverable } from '@/types';
 import JourneyTimeline from './JourneyTimeline';
 
@@ -11,35 +9,9 @@ const MONTH_PLAN: Record<number, { label: string; focus: string }> = {
 };
 
 export default async function JourneyPage() {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
-
-  const userId = user.id;
-  const adminPb = await createAdminClient();
-
-  const clients = await adminPb.collection('clients').getFullList({
-    filter: `user_id = "${userId}"`,
-  });
-  const client = clients[0];
-  if (!client) redirect('/login');
-
-  let deliverables: Deliverable[] = [];
-  try {
-    const records = await adminPb.collection('deliverables').getFullList({
-      filter: `client_id = "${client.id}"`,
-      sort: 'month,week',
-    });
-    deliverables = records as unknown as Deliverable[];
-  } catch {}
-
-  const currentMonth = client.current_month || 1;
-  const now = new Date();
-  const startDate = new Date(client.onboarding_completed_at || client.created);
-  const weeksSinceStart = Math.max(
-    1,
-    Math.floor((now.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
-  );
-  const currentWeek = Math.min(weeksSinceStart, 4);
+  const deliverables: Deliverable[] = [];
+  const currentMonth = 1;
+  const currentWeek = 1;
 
   return (
     <div className="mx-auto max-w-[960px] px-6 py-10">
