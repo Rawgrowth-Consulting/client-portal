@@ -61,6 +61,17 @@ export default async function ClientDetailPage({
     }
   } catch {}
 
+
+  // Rawclaw install status
+  let rawclawInstall: any = null;
+  try {
+    const installs = await adminPb.collection('rawclaw_installs').getFullList({
+      filter: `client_id = "${id}"`,
+      sort: '-last_heartbeat',
+    });
+    rawclawInstall = installs[0] || null;
+  } catch {}
+
   return (
     <div>
       <div className="mb-6 flex items-center gap-3">
@@ -242,6 +253,31 @@ export default async function ClientDetailPage({
           </div>
         </div>
       </div>
+
+      {/* RawClaw Install Status */}
+      <div
+        className="mt-6 overflow-hidden rounded-xl"
+        style={{ background: '#0A1210', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <div
+          className="h-px w-full"
+          style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+        />
+        <div className="p-6">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            Rawclaw Status
+          </h2>
+          {rawclawInstall ? (
+            <RawclawStatusCard install={rawclawInstall} />
+          ) : (
+            <div className="rounded-lg px-4 py-8 text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                No install detected. Setup token will appear on the client&apos;s onboarding complete page.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -306,3 +342,69 @@ function QuestionnaireViewer({ data }: { data: Record<string, any> }) {
     </div>
   );
 }
+
+function RawclawStatusCard({ install }: { install: any }) {
+  const lastHeartbeat = new Date(install.last_heartbeat);
+  const minutesAgo = Math.floor((Date.now() - lastHeartbeat.getTime()) / 60000);
+  const isOnline = minutesAgo < 10;
+  const agents: string[] = typeof install.active_agents === 'string'
+    ? JSON.parse(install.active_agents || '[]')
+    : (install.active_agents || []);
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <div
+            className="h-2 w-2 rounded-full"
+            style={{ background: isOnline ? '#0CBF6A' : '#ef4444' }}
+          />
+          <span className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
+            {isOnline ? 'Online' : 'Offline'}
+          </span>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>Last heartbeat</span>
+            <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+              {minutesAgo < 60
+                ? `${minutesAgo}m ago`
+                : lastHeartbeat.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>Version</span>
+            <span style={{ color: 'rgba(255,255,255,0.6)' }}>{install.rawclaw_version || 'unknown'}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>Machine ID</span>
+            <span className="font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              {install.machine_id?.slice(0, 12)}...
+            </span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          Active Agents
+        </div>
+        {agents.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {agents.map((agent) => (
+              <span
+                key={agent}
+                className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider"
+                style={{ background: 'rgba(12,191,106,0.10)', color: '#0CBF6A' }}
+              >
+                {agent}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>No agents reported</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
