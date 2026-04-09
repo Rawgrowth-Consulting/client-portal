@@ -8,7 +8,17 @@ export default async function AdminPage() {
 
   let clients: any[] = [];
   try {
-    clients = await convex.query(api.clients.listAll, {});
+    const raw = await convex.query(api.clients.listAll, {});
+    // Normalize Convex camelCase → snake_case expected by ClientsTable
+    clients = raw.map((c: any) => ({
+      ...c,
+      id: c._id,
+      health_score: c.healthScore ?? 0,
+      current_month: c.currentMonth ?? 1,
+      onboarding_step: c.onboardingStep ?? 1,
+      onboarding_completed_at: c.onboardingCompletedAt ?? null,
+      slack_channel_id: c.slackChannelId ?? null,
+    }));
   } catch (err) {
     console.error('Failed to fetch clients:', err);
   }
