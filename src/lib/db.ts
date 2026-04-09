@@ -1,3 +1,3 @@
 // Legacy app-starter file -- not used by client portal
-// Portal uses PocketBase via pb-server.ts and pb-client.ts
+// Portal uses Convex via convex-server.ts
 export {}

@@ -1,13 +1,14 @@
-import { createAdminClient } from '@/lib/pb-server';
 import { requireAdmin } from '@/lib/auth';
+import { convex } from '@/lib/convex-server';
+import { api } from '../../../convex/_generated/api';
 import { ClientsTable } from './clients-table';
 
 export default async function AdminPage() {
-  const { pb } = await requireAdmin();
+  await requireAdmin();
 
   let clients: any[] = [];
   try {
-    clients = await pb.collection('clients').getFullList({});
+    clients = await convex.query(api.clients.listAll, {});
   } catch (err) {
     console.error('Failed to fetch clients:', err);
   }

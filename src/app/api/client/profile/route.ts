@@ -1,16 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { convex } from "@/lib/convex-server";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function GET() {
   try {
     const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const userId = user.id;
-    const adminPb = await createAdminClient();
-    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
+    const client = await convex.query(api.clients.get, {
+      clientId: user.id as Id<"clients">,
+    });
 
-    return NextResponse.json({ client: clients[0] || null });
+    return NextResponse.json({ client });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -19,16 +22,18 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const userId = user.id;
     const { name, company } = await req.json();
+    const fields: Record<string, any> = {};
+    if (name !== undefined) fields.name = name;
+    if (company !== undefined) fields.company = company;
 
-    const adminPb = await createAdminClient();
-    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
-    if (clients.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    await convex.mutation(api.clients.update, {
+      clientId: user.id as Id<"clients">,
+      fields,
+    });
 
-    await adminPb.collection('clients').update(clients[0].id, { name, company });
     return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

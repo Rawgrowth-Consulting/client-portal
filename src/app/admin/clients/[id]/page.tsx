@@ -1,6 +1,8 @@
-import { createAdminClient } from '@/lib/pb-server';
 import { requireAdmin } from '@/lib/auth';
-import type { Client, OnboardingStep, Deliverable, BrandProfile } from '@/types';
+import { convex } from '@/lib/convex-server';
+import { api } from '../../../../../convex/_generated/api';
+import type { Id } from '../../../../../convex/_generated/dataModel';
+import type { OnboardingStep, Deliverable, BrandProfile } from '@/types';
 import Link from 'next/link';
 import { ClientDetailInteractive } from './client-detail-interactive';
 
@@ -22,55 +24,74 @@ export default async function ClientDetailPage({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const adminPb = await createAdminClient();
+  const clientId = id as Id<'clients'>;
 
-  const client = await adminPb.collection('clients').getOne<Client>(id);
+  const clientRaw = await convex.query(api.clients.get, { clientId });
+  if (!clientRaw) return <div>Client not found</div>;
 
-  let onboardingSteps: OnboardingStep[] = [];
+  // Normalize to snake_case for template compatibility
+  const client = {
+    ...clientRaw,
+    id: clientRaw._id,
+    health_score: clientRaw.healthScore,
+    current_month: clientRaw.currentMonth,
+    onboarding_step: clientRaw.onboardingStep,
+    onboarding_completed_at: clientRaw.onboardingCompletedAt,
+    slack_channel_id: clientRaw.slackChannelId,
+  };
+
+  let onboardingSteps: any[] = [];
   try {
-    onboardingSteps = await adminPb.collection('onboarding_steps').getFullList<OnboardingStep>({
-      filter: `client_id = "${id}"`,
-      sort: 'step_number',
-    });
+    const steps = await convex.query(api.clients.getOnboardingSteps, { clientId });
+    // Normalize step fields for template
+    onboardingSteps = steps.map((s) => ({
+      ...s,
+      step_number: s.stepNumber,
+      completed_at: s.completedAt,
+    }));
   } catch {}
 
-  let deliverables: Deliverable[] = [];
+  let deliverables: any[] = [];
   try {
-    deliverables = await adminPb.collection('deliverables').getFullList<Deliverable>({
-      filter: `client_id = "${id}"`,
-      sort: '-month,-week',
-    });
+    const del = await convex.query(api.deliverables.list, { clientId });
+    deliverables = del.map((d) => ({
+      ...d,
+      completed_at: d.completedAt,
+    }));
   } catch {}
 
-  let brandProfile: BrandProfile | null = null;
+  let brandProfile: any = null;
   try {
-    const profiles = await adminPb.collection('brand_profiles').getFullList<BrandProfile>({
-      filter: `client_id = "${id}"`,
-      sort: '-version',
-    });
-    brandProfile = profiles[0] || null;
+    const profile = await convex.query(api.brandProfile.get, { clientId });
+    brandProfile = profile;
   } catch {}
 
   let questionnaireData: Record<string, any> | null = null;
   try {
-    const intakes = await adminPb.collection('brand_intakes').getFullList({
-      filter: `client_id = "${id}"`,
-    });
-    if (intakes[0]) {
-      questionnaireData = intakes[0] as unknown as Record<string, any>;
+    const intake = await convex.query(api.brandIntake.get, { clientId });
+    if (intake) {
+      questionnaireData = {
+        basic_info: intake.basicInfo,
+        social_presence: intake.socialPresence,
+        origin_story: intake.originStory,
+        business_model: intake.businessModel,
+        target_audience: intake.targetAudience,
+        goals: intake.goals,
+        challenges: intake.challenges,
+        brand_voice: intake.brandVoice,
+        competitors: intake.competitors,
+        content_messaging: intake.contentMessaging,
+        sales: intake.sales,
+        tools_systems: intake.toolsSystems,
+        additional_context: intake.additionalContext,
+        call_data: intake.callData,
+      };
     }
   } catch {}
 
 
-  // Rawclaw install status
-  let rawclawInstall: any = null;
-  try {
-    const installs = await adminPb.collection('rawclaw_installs').getFullList({
-      filter: `client_id = "${id}"`,
-      sort: '-last_heartbeat',
-    });
-    rawclawInstall = installs[0] || null;
-  } catch {}
+  // Rawclaw install status (heartbeat not implemented -- activity-based only)
+  const rawclawInstall: any = null;
 
   return (
     <div>

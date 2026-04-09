@@ -1,6 +1,7 @@
-import { createAdminClient } from '@/lib/pb-server';
 import { requireAdmin } from '@/lib/auth';
-import type { Client, BrandProfile } from '@/types';
+import { convex } from '@/lib/convex-server';
+import { api } from '../../../../../../convex/_generated/api';
+import type { Id } from '../../../../../../convex/_generated/dataModel';
 import Link from 'next/link';
 import { BrandProfileEditor } from './brand-profile-editor';
 
@@ -11,17 +12,14 @@ export default async function BrandProfilePage({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const adminPb = await createAdminClient();
+  const clientId = id as Id<'clients'>;
 
-  const client = await adminPb.collection('clients').getOne<Client>(id);
+  const clientRaw = await convex.query(api.clients.get, { clientId });
+  if (!clientRaw) return <div>Client not found</div>;
 
-  let brandProfile: BrandProfile | null = null;
+  let brandProfile: any = null;
   try {
-    const profiles = await adminPb.collection('brand_profiles').getFullList<BrandProfile>({
-      filter: `client_id = "${id}"`,
-      sort: '-version',
-    });
-    brandProfile = profiles[0] || null;
+    brandProfile = await convex.query(api.brandProfile.get, { clientId });
   } catch {}
 
   return (
@@ -40,7 +38,7 @@ export default async function BrandProfilePage({
           className="text-xs font-medium transition-colors hover:text-white"
           style={{ color: 'rgba(255,255,255,0.35)' }}
         >
-          {client.name}
+          {clientRaw.name}
         </Link>
         <span style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
         <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -54,7 +52,7 @@ export default async function BrandProfilePage({
             Brand Profile
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {client.company}
+            {clientRaw.company}
           </p>
         </div>
         {brandProfile && (

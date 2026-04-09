@@ -12,8 +12,8 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [checked, setChecked] = useState(false)
 
   useEffect(() => {
-    // Check if pb_auth cookie exists (simple client-side check)
-    const hasCookie = document.cookie.includes('pb_auth')
+    // Check if convex_auth cookie exists (simple client-side check)
+    const hasCookie = document.cookie.includes('convex_auth')
     if (!hasCookie) {
       router.replace('/login')
     } else {

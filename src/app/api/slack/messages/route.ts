@@ -1,19 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { getSlackMessages } from '@/lib/slack';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { convex } from "@/lib/convex-server";
+import { api } from "../../../../../convex/_generated/api";
+import { getSlackMessages } from "@/lib/slack";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function GET() {
   try {
     const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const userId = user.id;
-    const adminPb = await createAdminClient();
-    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
+    const client = await convex.query(api.clients.get, {
+      clientId: user.id as Id<"clients">,
+    });
 
-    if (clients.length === 0) return NextResponse.json({ fallback: true });
+    if (!client) return NextResponse.json({ fallback: true });
 
-    const channelId = clients[0].slack_channel_id;
+    const channelId = client.slackChannelId;
     if (!channelId) return NextResponse.json({ fallback: true });
 
     if (!process.env.SLACK_BOT_TOKEN) return NextResponse.json({ fallback: true });
@@ -21,7 +24,7 @@ export async function GET() {
     const messages = await getSlackMessages(channelId, 50);
     return NextResponse.json({ messages });
   } catch (err: any) {
-    console.error('Slack messages error:', err);
+    console.error("Slack messages error:", err);
     return NextResponse.json({ fallback: true });
   }
 }

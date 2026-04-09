@@ -1,41 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { convex } from "@/lib/convex-server";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const userId = user.id;
-    const adminPb = await createAdminClient();
-    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
-    if (clients.length === 0) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    const clientId = user.id as Id<"clients">;
 
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    const type = formData.get('type') as string;
+    // Generate upload URL from Convex storage
+    const uploadUrl = await convex.mutation(api.documents.generateUploadUrl, {});
 
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-
-    const doc = await adminPb.collection('portal_documents').create({
-      client_id: clients[0].id,
-      type: type || 'other',
-      file: file,
-      filename: file.name,
-      size: file.size,
-      uploaded_at: new Date().toISOString(),
-    });
-
-    return NextResponse.json({
-      document: {
-        id: doc.id,
-        filename: file.name,
-        type: type,
-        size: file.size,
-      },
-    });
+    return NextResponse.json({ uploadUrl, clientId });
   } catch (err: any) {
-    console.error('Document upload error:', err);
+    console.error("Document upload error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { getAuthUser } from '@/lib/pb-server';
+import { getAuthUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 

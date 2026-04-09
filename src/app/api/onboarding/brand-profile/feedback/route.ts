@@ -1,24 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, createAdminClient } from '@/lib/pb-server';
-import { sendSlackMessage } from '@/lib/slack';
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { convex } from "@/lib/convex-server";
+import { api } from "../../../../../../convex/_generated/api";
+import { sendSlackMessage } from "@/lib/slack";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const userId = user.id;
     const { feedback } = await req.json();
 
-    const adminPb = await createAdminClient();
-    const clients = await adminPb.collection('clients').getFullList({ filter: `user_id = "${userId}"` });
-    if (clients.length === 0) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-
-    const client = clients[0];
+    const client = await convex.query(api.clients.get, {
+      clientId: user.id as Id<"clients">,
+    });
 
     // Notify Slack
     const slackChannel = process.env.SLACK_TEAM_CHANNEL;
-    if (slackChannel) {
+    if (slackChannel && client) {
       await sendSlackMessage(slackChannel, `Brand profile feedback from ${client.name}: ${feedback}`);
     }
 

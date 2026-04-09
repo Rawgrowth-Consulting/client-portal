@@ -1,76 +1,59 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/pb-server';
+import { NextRequest, NextResponse } from "next/server";
+import { convex } from "@/lib/convex-server";
+import { api } from "../../../../../convex/_generated/api";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 
-async function validateBearerToken(
-  adminPb: any,
-  authHeader: string | null
-): Promise<{ valid: boolean; clientId?: string }> {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { valid: false };
-  }
-
-  const token = authHeader.slice(7);
-
-  // Check setup tokens
+// Rawclaw agents POST activity events here
+// Auth: bearer token = client's Convex _id
+export async function POST(req: NextRequest) {
   try {
-    const setupTokens = await adminPb.collection('rawclaw_setup_tokens').getFullList({
-      filter: `token = "${token}"`,
-    });
-    if (setupTokens.length > 0) {
-      return { valid: true, clientId: setupTokens[0].client_id };
+    const authHeader = req.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "").trim();
+
+    if (!token) {
+      return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     }
-  } catch {}
 
-  // Check install tokens (permanent)
-  try {
-    const installTokens = await adminPb.collection('rawclaw_install_tokens').getFullList({
-      filter: `token = "${token}" && active = true`,
-    });
-    if (installTokens.length > 0) {
-      return { valid: true, clientId: installTokens[0].client_id };
+    // Token is the client's Convex _id
+    let client;
+    try {
+      client = await convex.query(api.clients.get, {
+        clientId: token as Id<"clients">,
+      });
+    } catch {
+      // Not a valid ID format
     }
-  } catch {}
 
-  return { valid: false };
-}
+    if (!client) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
 
-// POST /api/rawclaw/activity — rawclaw posts events here
-export async function POST(request: NextRequest) {
-  const adminPb = await createAdminClient();
+    const body = await req.json();
+    const { eventType, event_type, title, description, agentName, agent_name, metadata, severity } = body;
 
-  const auth = await validateBearerToken(adminPb, request.headers.get('Authorization'));
-  if (!auth.valid || !auth.clientId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+    const resolvedEventType = eventType || event_type;
+    const resolvedAgentName = agentName || agent_name;
 
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+    if (!resolvedEventType || !title) {
+      return NextResponse.json({ error: "event_type and title required" }, { status: 400 });
+    }
 
-  const { event_type, title, description, agent_name, metadata, severity } = body;
+    const validSeverities = ["info", "success", "warning", "error"];
+    const resolvedSeverity = validSeverities.includes(severity) ? severity : "info";
 
-  if (!event_type || !title || !agent_name) {
-    return NextResponse.json({ error: 'event_type, title, and agent_name required' }, { status: 400 });
-  }
-
-  try {
-    const record = await adminPb.collection('activity_events').create({
-      client_id: auth.clientId,
-      event_type,
+    await convex.mutation(api.activityFeed.log, {
+      clientId: client._id,
+      eventType: resolvedEventType,
       title,
-      description: description || null,
-      agent_name,
-      metadata: JSON.stringify(metadata || {}),
-      severity: severity || 'info',
-      read_at: null,
+      description: description || title,
+      agentName: resolvedAgentName || undefined,
+      metadata: metadata || undefined,
+      severity: resolvedSeverity,
     });
 
-    return NextResponse.json({ ok: true, id: record.id });
+    return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error('Activity post error:', err);
+    console.error("Rawclaw activity error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
