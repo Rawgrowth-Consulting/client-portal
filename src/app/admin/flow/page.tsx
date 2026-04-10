@@ -1,18 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import dynamic from 'next/dynamic';
-
-// Dynamic import to avoid SSR issues with React Flow
-const FlowChart = dynamic(() => import('./FlowChart'), {
-  ssr: false,
-  loading: () => (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      height: 'calc(100vh - 200px)', background: '#020817', color: '#475569', fontSize: 13,
-    }}>
-      Loading flow map...
-    </div>
-  ),
-});
+import FlowLoader from './FlowLoader';
 
 export default async function FlowPage() {
   await requireAdmin();
@@ -26,7 +13,7 @@ export default async function FlowPage() {
       background: '#020817',
       overflow: 'hidden',
     }}>
-      <FlowChart />
+      <FlowLoader />
     </div>
   );
 }
