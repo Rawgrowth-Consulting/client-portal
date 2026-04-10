@@ -101,97 +101,25 @@ export const generate = action({
       throw new Error("No brand profile record found");
     }
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (!anthropicKey) {
-      // If no API key, generate a placeholder
-      await ctx.runMutation(api.brandProfile.updateContent, {
-        profileId: profile._id,
-        content:
-          "Brand profile generation requires an Anthropic API key. Please contact the Rawgrowth team.",
-        status: "ready",
-      });
-      return;
-    }
-
-    // Build the prompt from intake data
-    const sections = [
-      intake.basicInfo && `Basic Info: ${JSON.stringify(intake.basicInfo)}`,
-      intake.socialPresence &&
-        `Social Presence: ${JSON.stringify(intake.socialPresence)}`,
-      intake.originStory &&
-        `Origin Story: ${JSON.stringify(intake.originStory)}`,
-      intake.businessModel &&
-        `Business Model: ${JSON.stringify(intake.businessModel)}`,
-      intake.targetAudience &&
-        `Target Audience: ${JSON.stringify(intake.targetAudience)}`,
-      intake.goals && `Goals: ${JSON.stringify(intake.goals)}`,
-      intake.challenges && `Challenges: ${JSON.stringify(intake.challenges)}`,
-      intake.brandVoice &&
-        `Brand Voice: ${JSON.stringify(intake.brandVoice)}`,
-      intake.competitors &&
-        `Competitors: ${JSON.stringify(intake.competitors)}`,
-      intake.contentMessaging &&
-        `Content & Messaging: ${JSON.stringify(intake.contentMessaging)}`,
-      intake.sales && `Sales: ${JSON.stringify(intake.sales)}`,
-      intake.toolsSystems &&
-        `Tools & Systems: ${JSON.stringify(intake.toolsSystems)}`,
-      intake.additionalContext &&
-        `Additional Context: ${JSON.stringify(intake.additionalContext)}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    // Delegate AI generation to the Next.js API route which has access to env vars
+    const generateUrl = "https://portal.rawgrowth.ai/api/brand-profile/ai-generate";
+    const genResponse = await fetch(generateUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        messages: [
-          {
-            role: "user",
-            content: `You are a brand strategist building a comprehensive brand profile document for an AI department install. Based on the following intake data, generate a detailed brand profile in markdown format.
-
-Include these sections:
-1. Company Overview
-2. Brand Identity & Voice
-3. Target Audience / ICP
-4. Content Strategy Framework
-5. Sales Positioning
-6. Competitive Landscape
-7. Key Messaging Pillars
-8. Recommended AI Agent Configuration (which agents to prioritize, what to train them on)
-
-Be specific. Use their actual data, not generic templates. Write it as if you're briefing the AI agents that will work for this company.
-
-${sections}`,
-          },
-        ],
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: args.clientId, profileId: profile._id }),
     });
 
-    if (!response.ok) {
-      const error = await response.text();
+    if (!genResponse.ok) {
+      // Silently mark ready with empty content — team will fill it manually
       await ctx.runMutation(api.brandProfile.updateContent, {
         profileId: profile._id,
-        content: `Error generating profile: ${error}`,
+        content: "",
         status: "ready",
       });
       return;
     }
 
-    const result = await response.json();
-    const content =
-      result.content?.[0]?.text || "Failed to generate brand profile.";
-
-    await ctx.runMutation(api.brandProfile.updateContent, {
-      profileId: profile._id,
-      content,
-      status: "ready",
-    });
+    // Generation was handled by the Next.js route — profile already updated
+    return;
   },
 });

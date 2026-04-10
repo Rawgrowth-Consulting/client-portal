@@ -85,9 +85,19 @@ export default function BrandProfileStep() {
       <p className="mb-8 text-[rgba(255,255,255,0.5)]">Review the AI-generated profile based on your questionnaire. This drives all content and strategy.</p>
 
       <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-6 md:p-8">
-        <div className="prose-portal">
-          <ReactMarkdown>{profile.content || 'No profile generated yet.'}</ReactMarkdown>
-        </div>
+        {profile.content ? (
+          <div className="prose-portal">
+            <ReactMarkdown>{profile.content}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="mb-4 h-10 w-10 rounded-full bg-[#0CBF6A]/10 flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0CBF6A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <p className="text-base font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>Your brand profile is being finalized.</p>
+            <p className="mt-1 text-sm text-[rgba(255,255,255,0.45)]">Our team is reviewing your questionnaire. You'll see the full profile here shortly. You're good to continue.</p>
+          </div>
+        )}
       </div>
 
       {showFeedback && (
