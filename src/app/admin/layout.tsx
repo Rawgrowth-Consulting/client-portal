@@ -1,6 +1,7 @@
 import { getAuthUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthUser();
@@ -12,13 +13,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <header className="sticky top-0 z-50 border-b" style={{ background: '#0A1210', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-3">
           <div className="flex items-center gap-8">
-            <Link href="/admin" className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: '#0CBF6A' }}>R</div>
-              <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.92)' }}>Rawgrowth Admin</span>
+            <Link href="/admin" className="flex items-center">
+              <Image
+                src="/logo-white.webp"
+                alt="Rawgrowth"
+                width={120}
+                height={41}
+                priority
+                className="h-7 w-auto object-contain"
+              />
             </Link>
             <nav className="flex items-center gap-6">
-              <Link href="/admin" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white">All Clients</Link>
-              <Link href="/admin/resources/new" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white">Resources</Link>
+              <Link href="/admin" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white transition-colors">All Clients</Link>
+              <Link href="/admin/invites" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white transition-colors">Invites</Link>
+              <Link href="/admin/resources/new" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white transition-colors">Resources</Link>
+              <Link href="/admin/flow" className="text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white transition-colors">Flow Map</Link>
             </nav>
           </div>
           <div className="flex items-center gap-3">
