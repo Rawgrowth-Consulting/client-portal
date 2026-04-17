@@ -2,64 +2,100 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation, useAction } from 'convex/react';
-import { api } from '../../../../convex/_generated/api';
-import { Id } from '../../../../convex/_generated/dataModel';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabase';
 import ReactMarkdown from 'react-markdown';
 
 export default function BrandProfileStep() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
-  const [clientId, setClientId] = useState<string | null>(null);
-
-  const updateStep = useMutation(api.clients.updateOnboardingStep);
-  const approveProfile = useMutation(api.brandProfile.approve);
-  const regenerateProfile = useMutation(api.brandProfile.regenerate);
-  const generateProfile = useAction(api.brandProfile.generate);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setClientId(localStorage.getItem('rg_client_id'));
-  }, []);
+    if (!session?.user?.id) return;
 
-  const profile = useQuery(
-    api.brandProfile.get,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
+    async function loadProfile() {
+      const { data } = await supabase
+        .from('brand_profiles')
+        .select('*')
+        .eq('client_id', session!.user.id)
+        .order('version', { ascending: false })
+        .limit(1)
+        .single();
 
-  // Trigger generation if profile exists in "generating" state with empty content
-  useEffect(() => {
-    if (profile?.status === 'generating' && !profile.content && clientId) {
-      generateProfile({ clientId: clientId as Id<'clients'> }).catch(console.error);
+      setProfile(data);
+      setLoading(false);
+
+      // If generating with no content, trigger AI generation
+      if (data?.status === 'generating' && !data.content) {
+        await fetch('/api/brand-profile/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: session!.user.id, profileId: data.id }),
+        });
+        // Re-fetch after generation
+        const { data: updated } = await supabase
+          .from('brand_profiles')
+          .select('*')
+          .eq('id', data.id)
+          .single();
+        if (updated) setProfile(updated);
+      }
     }
-  }, [profile?.status, profile?.content, clientId, generateProfile]);
+
+    loadProfile();
+  }, [session?.user?.id]);
 
   async function handleApprove() {
-    if (!clientId || !profile) return;
-    await approveProfile({
-      profileId: profile._id,
-      approvedBy: clientId,
-    });
-    await updateStep({
-      clientId: clientId as Id<'clients'>,
-      step: 4,
-    });
+    if (!session?.user?.id || !profile) return;
+
+    await supabase
+      .from('brand_profiles')
+      .update({ status: 'approved', approved_at: Date.now(), approved_by: session.user.id })
+      .eq('id', profile.id);
+
+    await supabase
+      .from('clients')
+      .update({ onboarding_step: 4 })
+      .eq('id', session.user.id);
+
     router.push('/onboarding/4-brand-docs');
   }
 
   async function handleRequestChanges() {
-    if (!clientId) return;
-    await regenerateProfile({
-      clientId: clientId as Id<'clients'>,
-      feedback,
-    });
-    // Trigger regeneration
-    generateProfile({ clientId: clientId as Id<'clients'> }).catch(console.error);
+    if (!session?.user?.id) return;
+
+    // Create new version in generating state
+    const { data: newProfile } = await supabase
+      .from('brand_profiles')
+      .insert({
+        client_id: session.user.id,
+        version: (profile?.version || 0) + 1,
+        content: '',
+        status: 'generating',
+        generated_at: Date.now(),
+      })
+      .select('id')
+      .single();
+
+    if (newProfile) {
+      // Trigger regeneration
+      fetch('/api/brand-profile/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: session.user.id, profileId: newProfile.id }),
+      });
+      setProfile({ ...profile, status: 'generating', content: '' });
+    }
+
     setShowFeedback(false);
     setFeedback('');
   }
 
-  if (!profile) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[#0CBF6A] border-t-transparent" />
@@ -68,7 +104,7 @@ export default function BrandProfileStep() {
     );
   }
 
-  if (profile.status === 'generating') {
+  if (!profile || profile.status === 'generating') {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[#0CBF6A] border-t-transparent" />

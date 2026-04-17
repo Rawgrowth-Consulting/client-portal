@@ -1,22 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
+
+export async function GET() {
+  try {
+    const user = await getAuthUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { data: documents } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("client_id", user.id);
+
+    return NextResponse.json({ documents: documents || [] });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const clientId = user.id as Id<"clients">;
+    const { type, storage_url, filename, size } = await req.json();
 
-    // Generate upload URL from Convex storage
-    const uploadUrl = await convex.mutation(api.documents.generateUploadUrl, {});
+    const { data: doc, error } = await supabase
+      .from("documents")
+      .insert({
+        client_id: user.id,
+        type,
+        storage_url,
+        filename,
+        size,
+      })
+      .select()
+      .single();
 
-    return NextResponse.json({ uploadUrl, clientId });
+    if (error) throw error;
+
+    return NextResponse.json({ document: doc });
   } catch (err: any) {
-    console.error("Document upload error:", err);
+    console.error("Document save error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

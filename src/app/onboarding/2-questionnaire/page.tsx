@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '../../../../convex/_generated/api';
-import { Id } from '../../../../convex/_generated/dataModel';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabase';
 
 interface SectionConfig {
   id: string;
@@ -21,6 +20,23 @@ interface FieldConfig {
   required?: boolean;
   helperText?: string;
 }
+
+// Map camelCase section IDs to snake_case Supabase columns
+const SECTION_TO_COLUMN: Record<string, string> = {
+  basicInfo: 'basic_info',
+  socialPresence: 'social_presence',
+  originStory: 'origin_story',
+  businessModel: 'business_model',
+  targetAudience: 'target_audience',
+  goals: 'goals',
+  challenges: 'challenges',
+  brandVoice: 'brand_voice',
+  competitors: 'competitors',
+  contentMessaging: 'content_messaging',
+  sales: 'sales',
+  toolsSystems: 'tools_systems',
+  additionalContext: 'additional_context',
+};
 
 const SECTIONS: SectionConfig[] = [
   {
@@ -177,43 +193,42 @@ const SECTIONS: SectionConfig[] = [
 
 export default function QuestionnairePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [currentSection, setCurrentSection] = useState(0);
   const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savedSections, setSavedSections] = useState<Set<number>>(new Set());
-  const [clientId, setClientId] = useState<string | null>(null);
 
-  const saveSection = useMutation(api.brandIntake.saveSection);
-  const submitIntake = useMutation(api.brandIntake.submit);
-  const updateStep = useMutation(api.clients.updateOnboardingStep);
-
-  // Load client ID and existing data
+  // Load existing data
   useEffect(() => {
-    const id = localStorage.getItem('rg_client_id');
-    setClientId(id);
-  }, []);
+    if (!session?.user?.id) return;
 
-  const intake = useQuery(
-    api.brandIntake.get,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
+    async function loadIntake() {
+      const { data: intake } = await supabase
+        .from('brand_intakes')
+        .select('*')
+        .eq('client_id', session!.user.id)
+        .single();
 
-  // Populate form with existing data when intake loads
-  useEffect(() => {
-    if (!intake) return;
-    const loaded: Record<string, Record<string, string>> = {};
-    SECTIONS.forEach((section, idx) => {
-      const data = (intake as any)[section.id];
-      if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-        loaded[section.id] = data;
-        setSavedSections(prev => new Set(prev).add(idx));
+      if (!intake) return;
+
+      const loaded: Record<string, Record<string, string>> = {};
+      SECTIONS.forEach((section, idx) => {
+        const col = SECTION_TO_COLUMN[section.id];
+        const data = intake[col];
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+          loaded[section.id] = data;
+          setSavedSections(prev => new Set(prev).add(idx));
+        }
+      });
+      if (Object.keys(loaded).length > 0) {
+        setFormData(loaded);
       }
-    });
-    if (Object.keys(loaded).length > 0) {
-      setFormData(loaded);
     }
-  }, [intake]);
+
+    loadIntake();
+  }, [session?.user?.id]);
 
   function updateField(sectionId: string, fieldName: string, value: string) {
     setFormData(prev => ({
@@ -223,15 +238,20 @@ export default function QuestionnairePage() {
   }
 
   async function handleSaveSection(sectionIndex: number) {
-    if (!clientId) return;
+    if (!session?.user?.id) return;
     setSaving(true);
     try {
       const section = SECTIONS[sectionIndex];
-      await saveSection({
-        clientId: clientId as Id<'clients'>,
-        section: section.id,
-        data: formData[section.id] || {},
-      });
+      const col = SECTION_TO_COLUMN[section.id];
+
+      // Upsert the section data
+      await supabase
+        .from('brand_intakes')
+        .upsert(
+          { client_id: session.user.id, [col]: formData[section.id] || {} },
+          { onConflict: 'client_id' }
+        );
+
       setSavedSections(prev => new Set(prev).add(sectionIndex));
       if (sectionIndex < SECTIONS.length - 1) {
         setCurrentSection(sectionIndex + 1);
@@ -244,25 +264,25 @@ export default function QuestionnairePage() {
   }
 
   async function handleSubmit() {
-    if (!clientId) return;
+    if (!session?.user?.id) return;
     setSubmitting(true);
     try {
-      // Save last section first
       const section = SECTIONS[currentSection];
-      await saveSection({
-        clientId: clientId as Id<'clients'>,
-        section: section.id,
-        data: formData[section.id] || {},
-      });
+      const col = SECTION_TO_COLUMN[section.id];
 
-      // Submit intake (creates brand profile in "generating" state)
-      await submitIntake({ clientId: clientId as Id<'clients'> });
+      // Save last section + mark as submitted
+      await supabase
+        .from('brand_intakes')
+        .upsert(
+          { client_id: session.user.id, [col]: formData[section.id] || {}, submitted_at: Date.now() },
+          { onConflict: 'client_id' }
+        );
 
-      // Update step
-      await updateStep({
-        clientId: clientId as Id<'clients'>,
-        step: 3,
-      });
+      // Update onboarding step
+      await supabase
+        .from('clients')
+        .update({ onboarding_step: 3 })
+        .eq('id', session.user.id);
 
       router.push('/onboarding/3-brand-profile');
     } catch (err) {

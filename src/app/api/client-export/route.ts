@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
 
 /**
  * GET /api/client-export
@@ -10,12 +8,10 @@ import type { Id } from "../../../../convex/_generated/dataModel";
  * knowledge/client/ files automatically.
  *
  * Auth: Authorization: Bearer <clientId>
- * The token is the client's Convex _id (same token as /api/rawclaw/generate-token).
  *
  * Returns: PortalClientConfig (matches portal-sync.ts interface)
  */
 export async function GET(req: NextRequest) {
-  // Auth -- Bearer token is client's Convex _id
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Missing authorization header" }, { status: 401 });
@@ -23,52 +19,44 @@ export async function GET(req: NextRequest) {
   const token = authHeader.slice(7).trim();
 
   // Look up client
-  let client: any;
-  try {
-    client = await convex.query(api.clients.get, {
-      clientId: token as Id<"clients">,
-    });
-  } catch {
-    // Invalid ID format
-  }
+  const { data: client } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", token)
+    .single();
 
   if (!client) {
     return NextResponse.json({ error: "Token not found" }, { status: 404 });
   }
 
   // Pull intake data
-  const intake = await convex.query(api.brandIntake.get, {
-    clientId: client._id,
-  });
+  const { data: intake } = await supabase
+    .from("brand_intakes")
+    .select("*")
+    .eq("client_id", client.id)
+    .single();
 
-  // Map to PortalClientConfig
   const config = buildClientConfig(client, intake);
 
   return NextResponse.json(config);
 }
 
 function buildClientConfig(client: any, intake: any): Record<string, any> {
-  const basic = intake?.basicInfo || {};
-  const social = intake?.socialPresence || {};
-  const business = intake?.businessModel || {};
-  const audience = intake?.targetAudience || {};
+  const basic = intake?.basic_info || {};
+  const social = intake?.social_presence || {};
+  const business = intake?.business_model || {};
+  const audience = intake?.target_audience || {};
   const goals = intake?.goals || {};
   const challenges = intake?.challenges || {};
-  const voice = intake?.brandVoice || {};
+  const voice = intake?.brand_voice || {};
   const competitorData = intake?.competitors || {};
   const salesData = intake?.sales || {};
-  const messaging = intake?.contentMessaging || {};
-  const additional = intake?.additionalContext || {};
+  const messaging = intake?.content_messaging || {};
+  const additional = intake?.additional_context || {};
 
-  // --- Company ---
   const companyName = client.company || "";
-  const website =
-    basic.website ||
-    social.website ||
-    social.primary_website ||
-    "";
+  const website = basic.website || social.website || social.primary_website || "";
 
-  // --- Description ---
   const description =
     business.one_line_description ||
     business.what_you_do ||
@@ -76,7 +64,6 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     messaging.primary_message ||
     `${companyName} offers professional services to their clients.`;
 
-  // --- ICP ---
   const icpParts: string[] = [];
   if (audience.ideal_client_title || audience.job_title) {
     icpParts.push(`**Who:** ${audience.ideal_client_title || audience.job_title}`);
@@ -103,7 +90,6 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     ? icpParts.join("\n")
     : audience.notes || "See business profile for ICP details.";
 
-  // --- Transformation ---
   const transformation =
     goals.client_transformation ||
     goals.outcome ||
@@ -112,7 +98,6 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     messaging.transformation ||
     `Clients work with ${companyName} to achieve measurable results in their business.`;
 
-  // --- Offer ---
   const offerName =
     business.main_offer ||
     business.product_name ||
@@ -132,13 +117,7 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     salesData.guarantee ||
     "Results guaranteed or we work until you get them.";
 
-  // Phases -- try structured or fallback to text
-  const rawPhases =
-    business.phases ||
-    business.process_phases ||
-    salesData.phases ||
-    null;
-
+  const rawPhases = business.phases || business.process_phases || salesData.phases || null;
   let phases: Array<{ name: string; duration: string; description: string }> | undefined;
   if (Array.isArray(rawPhases) && rawPhases.length > 0) {
     phases = rawPhases.map((p: any) => ({
@@ -147,17 +126,10 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
       description: p.description || p.details || "",
     }));
   } else if (typeof rawPhases === "string" && rawPhases.trim()) {
-    // Single text blob -- wrap as one phase
     phases = [{ name: "Core Process", duration: "", description: rawPhases }];
   }
 
-  // Objections
-  const rawObjections =
-    salesData.objections ||
-    salesData.common_objections ||
-    business.objections ||
-    null;
-
+  const rawObjections = salesData.objections || salesData.common_objections || business.objections || null;
   let objections: Array<{ question: string; answer: string }> | undefined;
   if (Array.isArray(rawObjections) && rawObjections.length > 0) {
     objections = rawObjections.map((o: any) => ({
@@ -166,29 +138,14 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     }));
   }
 
-  // --- Brand Voice ---
   const tone =
-    voice.tone ||
-    voice.personality ||
-    voice.voice_description ||
-    voice.writing_style ||
+    voice.tone || voice.personality || voice.voice_description || voice.writing_style ||
     "Professional, direct, and results-focused.";
 
-  const wordsToUse: string[] | undefined = parseStringList(
-    voice.words_to_use || voice.power_words || voice.preferred_words
-  );
+  const wordsToUse: string[] | undefined = parseStringList(voice.words_to_use || voice.power_words || voice.preferred_words);
+  const wordsToAvoid: string[] | undefined = parseStringList(voice.words_to_avoid || voice.avoid_words || voice.banned_words);
+  const styleNotes = voice.style_notes || voice.guidelines || voice.additional_notes || undefined;
 
-  const wordsToAvoid: string[] | undefined = parseStringList(
-    voice.words_to_avoid || voice.avoid_words || voice.banned_words
-  );
-
-  const styleNotes =
-    voice.style_notes ||
-    voice.guidelines ||
-    voice.additional_notes ||
-    undefined;
-
-  // --- Team ---
   const team: Array<{ name: string; role: string; contact?: string; authority?: string }> = [
     {
       name: client.name,
@@ -198,7 +155,6 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     },
   ];
 
-  // Additional team from intake
   const rawTeam = additional.team_members || additional.team || [];
   if (Array.isArray(rawTeam)) {
     for (const m of rawTeam) {
@@ -211,13 +167,8 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
     }
   }
 
-  // --- Competitors ---
   const competitors: Array<{ name: string; website?: string; notes?: string }> = [];
-  const rawComps =
-    competitorData.competitors ||
-    competitorData.main_competitors ||
-    competitorData.list ||
-    null;
+  const rawComps = competitorData.competitors || competitorData.main_competitors || competitorData.list || null;
 
   if (Array.isArray(rawComps)) {
     for (const c of rawComps) {
@@ -232,7 +183,6 @@ function buildClientConfig(client: any, intake: any): Record<string, any> {
       }
     }
   } else if (typeof rawComps === "string" && rawComps.trim()) {
-    // Comma or newline separated
     for (const name of rawComps.split(/[,\n]+/).map((s: string) => s.trim()).filter(Boolean)) {
       competitors.push({ name });
     }

@@ -1,15 +1,10 @@
-import { NextResponse } from "next/server";
+import { signOut } from "@/lib/auth-config";
 
 export async function POST() {
-  const response = NextResponse.json({ success: true });
-  response.cookies.set("convex_auth", "", { path: "/", maxAge: 0 });
-  return response;
+  await signOut({ redirect: false });
+  return Response.json({ success: true });
 }
 
 export async function GET() {
-  const response = NextResponse.redirect(
-    new URL("/login", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
-  );
-  response.cookies.set("convex_auth", "", { path: "/", maxAge: 0 });
-  return response;
+  await signOut({ redirectTo: "/login" });
 }

@@ -1,10 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useQuery } from 'convex/react';
-import { useRouter, usePathname } from 'next/navigation';
-import { api } from '../../../convex/_generated/api';
-import { Id } from '../../../convex/_generated/dataModel';
+import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 
 const NAV_ITEMS = [
@@ -17,33 +14,16 @@ const NAV_ITEMS = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
-  const [clientId, setClientId] = useState<string | null>(null);
+  const { data: session } = useSession();
 
-  useEffect(() => {
-    const id = localStorage.getItem('rg_client_id');
-    if (!id) {
-      router.push('/');
-      return;
-    }
-    setClientId(id);
-  }, [router]);
-
-  const client = useQuery(
-    api.clients.get,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
-
-  if (!clientId) return null;
-
-  const clientName = client?.name || '';
-  const company = client?.company || '';
+  const clientName = session?.user?.name || '';
+  const company = (session?.user as any)?.company || '';
 
   return (
     <div className="flex min-h-screen bg-[#060B08]">
       {/* Sidebar */}
-      <aside className="hidden w-64 flex-shrink-0 border-r border-[rgba(255,255,255,0.06)] bg-[#0A1210] md:flex md:flex-col">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-[rgba(255,255,255,0.06)] bg-[#0A1210] md:flex md:flex-col">
         <div className="p-6">
           <p className="text-xs font-medium uppercase tracking-widest text-[#0CBF6A]">Rawgrowth</p>
           <p className="mt-0.5 text-xs text-[rgba(255,255,255,0.35)]">Client Portal</p>
@@ -73,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-sm text-[rgba(255,255,255,0.7)]">{clientName}</p>
           <p className="text-xs text-[rgba(255,255,255,0.35)]">{company}</p>
           <button
-            onClick={() => { localStorage.removeItem('rg_client_id'); router.push('/'); }}
+            onClick={() => signOut({ callbackUrl: '/login' })}
             className="mt-2 text-xs text-[rgba(255,255,255,0.3)] hover:text-[rgba(255,255,255,0.6)]"
           >
             Log out
@@ -95,7 +75,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <main className="flex-1 overflow-y-auto pb-20 md:ml-64 md:pb-0">
         <div className="mx-auto max-w-5xl px-6 py-8 md:px-8 md:py-10">
           {children}
         </div>

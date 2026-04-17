@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 
 function VerifyContent() {
   const router = useRouter();
@@ -19,6 +20,7 @@ function VerifyContent() {
 
     async function verify() {
       try {
+        // Step 1: Verify the magic link token
         const res = await fetch('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -27,6 +29,14 @@ function VerifyContent() {
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Verification failed');
+
+        // Step 2: Create a next-auth session
+        const result = await signIn('magic-link', {
+          email: data.email,
+          redirect: false,
+        });
+
+        if (!result?.ok) throw new Error('Failed to create session');
 
         setStatus('success');
         setTimeout(() => router.push(data.redirect || '/dashboard'), 1000);

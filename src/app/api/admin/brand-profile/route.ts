@@ -1,33 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const clientId = req.nextUrl.searchParams.get("client_id");
-    if (!clientId) {
-      return NextResponse.json({ error: "client_id required" }, { status: 400 });
-    }
+    if (!clientId) return NextResponse.json({ error: "client_id required" }, { status: 400 });
 
-    const profile = await convex.query(api.brandProfile.get, {
-      clientId: clientId as Id<"clients">,
-    });
+    const { data: profiles } = await supabase
+      .from("brand_profiles")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("version", { ascending: false });
 
-    return NextResponse.json({
-      current: profile,
-      versions: profile ? [profile] : [],
-    });
+    const current = profiles?.[0] || null;
+
+    return NextResponse.json({ current, versions: profiles || [] });
   } catch (err: any) {
     console.error("Admin brand profile fetch error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -37,50 +29,57 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { profileId, clientId, client_id, content, action, status } = await req.json();
-    const resolvedClientId = (clientId || client_id) as Id<"clients">;
+    const resolvedClientId = clientId || client_id;
 
     if (!resolvedClientId || !content) {
       return NextResponse.json({ error: "clientId and content required" }, { status: 400 });
     }
 
-    let resolvedStatus: "generating" | "ready" | "approved" = status || "ready";
+    let resolvedStatus: string = status || "ready";
     if (action === "approve") resolvedStatus = "approved";
 
     if (profileId) {
-      await convex.mutation(api.brandProfile.updateContent, {
-        profileId: profileId as Id<"brandProfiles">,
-        content,
-        status: resolvedStatus,
-      });
+      // Update existing profile
+      const updateData: Record<string, any> = { content, status: resolvedStatus };
       if (resolvedStatus === "approved") {
-        await convex.mutation(api.brandProfile.approve, {
-          profileId: profileId as Id<"brandProfiles">,
-          approvedBy: user.id,
-        });
+        updateData.approved_at = Date.now();
+        updateData.approved_by = user.id;
       }
+      await supabase.from("brand_profiles").update(updateData).eq("id", profileId);
     } else {
-      // Create new version via regenerate + update
-      const newProfileId = await convex.mutation(api.brandProfile.regenerate, {
-        clientId: resolvedClientId,
-        feedback: content,
-      });
-      await convex.mutation(api.brandProfile.updateContent, {
-        profileId: newProfileId as Id<"brandProfiles">,
+      // Create new version
+      const { data: latest } = await supabase
+        .from("brand_profiles")
+        .select("version")
+        .eq("client_id", resolvedClientId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextVersion = (latest?.version || 0) + 1;
+
+      await supabase.from("brand_profiles").insert({
+        client_id: resolvedClientId,
+        version: nextVersion,
         content,
         status: resolvedStatus,
+        generated_at: Date.now(),
+        ...(resolvedStatus === "approved" ? { approved_at: Date.now(), approved_by: user.id } : {}),
       });
     }
 
-    const profile = await convex.query(api.brandProfile.get, { clientId: resolvedClientId });
+    const { data: profile } = await supabase
+      .from("brand_profiles")
+      .select("*")
+      .eq("client_id", resolvedClientId)
+      .order("version", { ascending: false })
+      .limit(1)
+      .single();
+
     return NextResponse.json({ profile });
   } catch (err: any) {
     console.error("Admin brand profile update error:", err);
@@ -91,34 +90,39 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { client_id, content, status } = await req.json();
-
     if (!client_id || !content) {
       return NextResponse.json({ error: "client_id and content required" }, { status: 400 });
     }
 
-    const newProfileId = await convex.mutation(api.brandProfile.regenerate, {
-      clientId: client_id as Id<"clients">,
-      feedback: "",
-    });
+    const { data: latest } = await supabase
+      .from("brand_profiles")
+      .select("version")
+      .eq("client_id", client_id)
+      .order("version", { ascending: false })
+      .limit(1)
+      .single();
 
-    await convex.mutation(api.brandProfile.updateContent, {
-      profileId: newProfileId as Id<"brandProfiles">,
+    const nextVersion = (latest?.version || 0) + 1;
+
+    await supabase.from("brand_profiles").insert({
+      client_id,
+      version: nextVersion,
       content,
-      status: (status || "ready") as "generating" | "ready" | "approved",
+      status: status || "ready",
+      generated_at: Date.now(),
     });
 
-    const profile = await convex.query(api.brandProfile.get, {
-      clientId: client_id as Id<"clients">,
-    });
+    const { data: profile } = await supabase
+      .from("brand_profiles")
+      .select("*")
+      .eq("client_id", client_id)
+      .order("version", { ascending: false })
+      .limit(1)
+      .single();
 
     return NextResponse.json({ profile });
   } catch (err: any) {

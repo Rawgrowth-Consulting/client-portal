@@ -1,7 +1,21 @@
 import BrandProfileView from '@/components/dashboard/BrandProfileView';
+import { getAuthUser } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
 export default async function BrandProfilePage() {
-  const profile = null;
+  const user = await getAuthUser();
+
+  let profile = null;
+  if (user) {
+    const { data } = await supabase
+      .from('brand_profiles')
+      .select('*')
+      .eq('client_id', user.id)
+      .order('version', { ascending: false })
+      .limit(1)
+      .single();
+    profile = data;
+  }
 
   return (
     <div>

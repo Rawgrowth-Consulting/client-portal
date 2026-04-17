@@ -2,9 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '../../../../convex/_generated/api';
-import { Id } from '../../../../convex/_generated/dataModel';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabase';
 
 const UPLOAD_ZONES = [
   { type: 'logo' as const, label: 'Logo Files', accept: '.png,.svg,.ai,.eps,.jpg,.jpeg,.pdf', description: 'PNG, SVG, AI, EPS formats' },
@@ -14,49 +13,59 @@ const UPLOAD_ZONES = [
 
 export default function BrandDocsStep() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [uploading, setUploading] = useState<string | null>(null);
-  const [clientId, setClientId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<any[]>([]);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
-  const saveDocument = useMutation(api.documents.save);
-  const updateStep = useMutation(api.clients.updateOnboardingStep);
-
   useEffect(() => {
-    setClientId(localStorage.getItem('rg_client_id'));
-  }, []);
+    if (!session?.user?.id) return;
 
-  const documents = useQuery(
-    api.documents.list,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
+    async function loadDocs() {
+      const { data } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('client_id', session!.user.id);
+      if (data) setDocuments(data);
+    }
+
+    loadDocs();
+  }, [session?.user?.id]);
 
   async function handleUpload(type: 'logo' | 'guideline' | 'asset', fileList: FileList) {
-    if (!clientId) return;
+    if (!session?.user?.id) return;
     setUploading(type);
 
     for (const file of Array.from(fileList)) {
       try {
-        // Get upload URL from Convex
-        const uploadUrl = await generateUploadUrl();
+        const filePath = `${session.user.id}/${type}/${Date.now()}-${file.name}`;
 
-        // Upload the file
-        const result = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': file.type },
-          body: file,
-        });
+        // Upload to Supabase Storage
+        const { error: uploadErr } = await supabase.storage
+          .from('brand-docs')
+          .upload(filePath, file);
 
-        const { storageId } = await result.json();
+        if (uploadErr) throw uploadErr;
 
-        // Save metadata
-        await saveDocument({
-          clientId: clientId as Id<'clients'>,
-          type,
-          storageId,
-          filename: file.name,
-          size: file.size,
-        });
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('brand-docs')
+          .getPublicUrl(filePath);
+
+        // Save metadata to documents table
+        const { data: doc } = await supabase
+          .from('documents')
+          .insert({
+            client_id: session.user.id,
+            type,
+            storage_url: urlData.publicUrl,
+            filename: file.name,
+            size: file.size,
+          })
+          .select()
+          .single();
+
+        if (doc) setDocuments(prev => [...prev, doc]);
       } catch (err) {
         console.error(err);
       }
@@ -73,19 +82,19 @@ export default function BrandDocsStep() {
   }
 
   async function handleContinue() {
-    if (!clientId) return;
-    await updateStep({ clientId: clientId as Id<'clients'>, step: 5 });
+    if (!session?.user?.id) return;
+    await supabase.from('clients').update({ onboarding_step: 5 }).eq('id', session.user.id);
     router.push('/onboarding/5-api-keys');
   }
 
   async function handleSkip() {
-    if (!clientId) return;
-    await updateStep({ clientId: clientId as Id<'clients'>, step: 5 });
+    if (!session?.user?.id) return;
+    await supabase.from('clients').update({ onboarding_step: 5 }).eq('id', session.user.id);
     router.push('/onboarding/5-api-keys');
   }
 
-  const filesByType = (type: string) => (documents || []).filter((d) => d.type === type);
-  const totalFiles = (documents || []).length;
+  const filesByType = (type: string) => documents.filter((d) => d.type === type);
+  const totalFiles = documents.length;
 
   return (
     <div>
@@ -127,7 +136,7 @@ export default function BrandDocsStep() {
             {filesByType(zone.type).length > 0 && (
               <div className="mt-3 space-y-1">
                 {filesByType(zone.type).map((f) => (
-                  <div key={f._id} className="flex items-center gap-2 rounded-lg bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm">
+                  <div key={f.id} className="flex items-center gap-2 rounded-lg bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0CBF6A" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span className="text-[rgba(255,255,255,0.7)]">{f.filename}</span>
                     <span className="text-[rgba(255,255,255,0.3)]">{(f.size / 1024).toFixed(0)}KB</span>
