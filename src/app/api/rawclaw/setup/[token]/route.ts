@@ -1,64 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../../convex/_generated/api";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-// Returns the configuration package for a Rawclaw install
-// The token is the client's Convex _id
+// Returns the configuration package for a Rawclaw install.
+// The token IS the client's Supabase `clients.id` (UUID).
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
 
   try {
-    // Token is the client's Convex _id
-    let client;
-    try {
-      client = await convex.query(api.clients.get, {
-        clientId: token as Id<"clients">,
-      });
-    } catch {
-      // Not a valid ID format
-    }
+    const { data: client } = await supabaseAdmin
+      .from("clients")
+      .select("id, name, email, company, slack_channel_id, current_month")
+      .eq("id", token)
+      .maybeSingle();
 
     if (!client) {
       return NextResponse.json({ error: "Token not found" }, { status: 404 });
     }
 
-    // Get brand intake for CLAUDE.md generation
-    const intake = await convex.query(api.brandIntake.get, { clientId: client._id });
+    const { data: intake } = await supabaseAdmin
+      .from("brand_intakes")
+      .select("*")
+      .eq("client_id", client.id)
+      .maybeSingle();
 
-    // Get brand profile
-    const brandProfile = await convex.query(api.brandProfile.get, { clientId: client._id });
+    const { data: brandProfile } = await supabaseAdmin
+      .from("brand_profiles")
+      .select("content")
+      .eq("client_id", client.id)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    // Build CLAUDE.md from intake data
     const claudeMd = buildClaudeMd(client, intake, brandProfile);
-
-    // Build agent configs (standard rawclaw agents)
     const agents = buildAgentConfigs(client);
+    const knowledge = buildKnowledge(intake, brandProfile);
 
-    // Build knowledge base
-    const knowledge = buildKnowledge(client, intake, brandProfile);
-
-    const configPackage = {
+    return NextResponse.json({
       version: "1.0.0",
       client: {
-        id: client._id,
+        id: client.id,
         name: client.name,
-        slug: slugify(client.company),
+        slug: slugify(client.company || client.name || ""),
         company: client.company,
         email: client.email,
-        slackChannelId: client.slackChannelId,
-        currentMonth: client.currentMonth,
+        slackChannelId: client.slack_channel_id,
+        currentMonth: client.current_month,
       },
-      convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL || "https://adjoining-scorpion-918.convex.cloud",
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
       claude_md: claudeMd,
       agents,
       knowledge,
-    };
-
-    return NextResponse.json(configPackage);
+    });
   } catch (err: any) {
     console.error("Setup token error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -72,7 +67,11 @@ function slugify(str: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function buildClaudeMd(client: any, intake: any, brandProfile: any): string {
+function buildClaudeMd(
+  client: any,
+  intake: any,
+  brandProfile: { content?: string } | null
+): string {
   const lines: string[] = [];
 
   lines.push(`# ${client.company} Business OS`);
@@ -81,37 +80,35 @@ function buildClaudeMd(client: any, intake: any, brandProfile: any): string {
   lines.push(`Client: ${client.name} (${client.email})`);
   lines.push("");
 
-  if (intake?.basicInfo) {
-    const info = intake.basicInfo;
+  if (intake?.basic_info) {
+    const info = intake.basic_info;
     if (info.industry) lines.push(`Industry: ${info.industry}`);
     if (info.revenue_range) lines.push(`Revenue: ${info.revenue_range}`);
     if (info.team_size) lines.push(`Team Size: ${info.team_size}`);
     lines.push("");
   }
 
-  if (intake?.targetAudience) {
-    const ta = intake.targetAudience;
+  if (intake?.target_audience) {
     lines.push("## Target Audience");
-    Object.entries(ta).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.target_audience as Record<string, any>)) {
       if (v) lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
-    });
+    }
     lines.push("");
   }
 
-  if (intake?.brandVoice) {
-    const bv = intake.brandVoice;
+  if (intake?.brand_voice) {
     lines.push("## Brand Voice");
-    Object.entries(bv).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.brand_voice as Record<string, any>)) {
       if (v) lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
-    });
+    }
     lines.push("");
   }
 
   if (intake?.goals) {
     lines.push("## Goals");
-    Object.entries(intake.goals).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.goals as Record<string, any>)) {
       if (v) lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
-    });
+    }
     lines.push("");
   }
 
@@ -136,7 +133,7 @@ function buildClaudeMd(client: any, intake: any, brandProfile: any): string {
 }
 
 function buildAgentConfigs(client: any): Record<string, { claude_md: string; yaml: string }> {
-  const company = client.company;
+  const company = client.company ?? "Client";
   const slug = slugify(company);
 
   return {
@@ -160,9 +157,8 @@ function buildAgentConfigs(client: any): Record<string, { claude_md: string; yam
 }
 
 function buildKnowledge(
-  client: any,
   intake: any,
-  brandProfile: any
+  brandProfile: { content?: string } | null
 ): Record<string, string> {
   const knowledge: Record<string, string> = {};
 
@@ -172,25 +168,25 @@ function buildKnowledge(
 
   if (intake?.competitors) {
     const lines = ["# Competitor Intelligence", ""];
-    Object.entries(intake.competitors).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.competitors as Record<string, any>)) {
       if (v) lines.push(`## ${k.replace(/_/g, " ")}\n${v}\n`);
-    });
+    }
     knowledge["research/competitors.md"] = lines.join("\n");
   }
 
   if (intake?.sales) {
     const lines = ["# Sales Process", ""];
-    Object.entries(intake.sales).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.sales as Record<string, any>)) {
       if (v) lines.push(`## ${k.replace(/_/g, " ")}\n${v}\n`);
-    });
+    }
     knowledge["sales/process.md"] = lines.join("\n");
   }
 
-  if (intake?.toolsSystems) {
+  if (intake?.tools_systems) {
     const lines = ["# Tools & Systems", ""];
-    Object.entries(intake.toolsSystems).forEach(([k, v]) => {
+    for (const [k, v] of Object.entries(intake.tools_systems as Record<string, any>)) {
       if (v) lines.push(`- ${k.replace(/_/g, " ")}: ${v}`);
-    });
+    }
     knowledge["ops/tools.md"] = lines.join("\n");
   }
 

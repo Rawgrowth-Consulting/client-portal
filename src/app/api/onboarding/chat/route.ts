@@ -46,16 +46,30 @@ NEVER repeat a question that's already been answered in this conversation. Befor
 ------------------------------------------------------------
 SECTION 1 — Communication preferences
 ------------------------------------------------------------
-Ask, in order:
-1. Which messaging channel they prefer — Telegram, Slack, or WhatsApp?
-2. Their handle for that channel (@username / workspace.slack.com / phone with country code).
+This section captures ONLY four values. Do NOT ask about anything else.
+
+Fields for Section 1 (the ONLY questions allowed here):
+  • messaging_channel — one of telegram / slack / whatsapp
+  • messaging_handle — their handle for that channel (@username / workspace.slack.com / phone with country code)
+  • slack_workspace_url — optional
+  • slack_channel_name — optional
+
+FORBIDDEN in Section 1 (these are Section 2 basicInfo fields — ask them LATER):
+  ✗ phone (standalone; "phone with country code" ONLY when it's the WhatsApp handle)
+  ✗ timezone
+  ✗ preferred_comms / preferred communication method
+  ✗ email, full name, business name
+
+Ask in order (one question per turn, acknowledge each answer first):
+1. Which messaging channel — Telegram, Slack, or WhatsApp?
+2. Their handle for that channel.
 3. "Do you have a Slack workspace you'd like to connect too?"
    • YES → ask workspace URL, then channel name.
-   • NO ("no thanks", "skip", "not now") → acknowledge briefly, DO NOT ask further Slack questions.
+   • NO → acknowledge briefly, DO NOT ask further Slack questions.
 
-Once you have the required info, call \`complete_section_1\`. Pass slack_workspace_url/slack_channel_name as null if they declined.
+Once you have those four values, call \`complete_section_1\`. Pass slack_workspace_url/slack_channel_name as null if they declined.
 
-IMMEDIATELY after the tool returns, proceed to Section 2 by asking the first Basic Info question. Do NOT say "section 1 done" or "let's move on".
+IMMEDIATELY after the tool returns, proceed to Section 2. Do NOT say "section 1 done" or "let's move on".
 
 ------------------------------------------------------------
 SECTION 2 — Brand Questionnaire (13 sub-sections)
@@ -699,8 +713,12 @@ async function completeScheduleCallsSection(userId: string) {
   return { ok: true };
 }
 
-async function completeOnboarding(userId: string) {
-  const { error } = await supabaseAdmin
+async function completeOnboarding(
+  userId: string,
+  transcript: IncomingMessage[]
+) {
+  // Flip client to active
+  const { error: clientErr } = await supabaseAdmin
     .from("clients")
     .update({
       onboarding_step: 8,
@@ -708,8 +726,36 @@ async function completeOnboarding(userId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", userId);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
+  if (clientErr) return { ok: false, error: clientErr.message };
+
+  // Persist the full conversational transcript for later reference/analysis
+  const cleanTranscript = transcript
+    .filter(
+      (m) =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 0
+    )
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  const { error: transcriptErr } = await supabaseAdmin
+    .from("brand_intakes")
+    .upsert(
+      {
+        client_id: userId,
+        full_transcript: cleanTranscript,
+      },
+      { onConflict: "client_id" }
+    );
+  if (transcriptErr) {
+    // Don't fail the whole completion over this — log and continue
+    console.error(
+      "[onboarding] transcript save failed:",
+      transcriptErr.message
+    );
+  }
+
+  return { ok: true, transcript_turns: cleanTranscript.length };
 }
 
 async function finalizeQuestionnaire(userId: string) {
@@ -842,9 +888,39 @@ export async function POST(req: NextRequest) {
               (intake as any)?.[nextSub.column]
             )}. DO NOT re-ask any of these fields.`
           : "Nothing captured for this sub-section yet.";
+
+        // basicInfo-specific hints: reuse anything we already have from Section 1
+        // or from the client record, and skip timezone if we can derive it.
+        let basicInfoHints = "";
+        if (nextSub.id === "basicInfo") {
+          const hints: string[] = [];
+          const handle = client?.messaging_handle;
+          if (
+            handle &&
+            client?.messaging_channel === "whatsapp" &&
+            typeof handle === "string" &&
+            handle.startsWith("+")
+          ) {
+            hints.push(
+              `The client's WhatsApp handle is "${handle}" — that IS their phone number with country code. Do NOT ask them for a phone number; just include { phone: "${handle}" } in your basicInfo save.`
+            );
+          } else if (handle) {
+            hints.push(
+              `The client's messaging handle is "${handle}" (not a phone number). If you need a phone number, ask once.`
+            );
+          }
+          hints.push(
+            `If the client's phone number or WhatsApp handle has a country code (e.g. +64 → New Zealand → NZT, +44 → UK → GMT/BST, +61 → Australia), INFER the timezone from it and use that value WITHOUT asking. Only ask about timezone if the country has multiple zones (US, Canada, Australia, Russia, Brazil) — in that case ask which city or state.`
+          );
+          hints.push(
+            `Scan the recent conversation for anything the client already said about phone, timezone, email, preferred_comms, full_name, business_name. If they already mentioned it, use that value WITHOUT asking again.`
+          );
+          basicInfoHints = "\n\nBasic info hints:\n- " + hints.join("\n- ");
+        }
+
         nextActionBlock = `Section 1 is complete. The current Section 2 sub-section is "${nextSub.label}" (section_id: "${nextSub.id}"). ${captured} Remaining fields to ask about: ${
           remaining.length ? remaining.join(", ") : "(all basic fields covered — wrap up with a short extra question if useful, then save)."
-        }. Once you have enough, call \`save_questionnaire_section({section_id: "${nextSub.id}", data: {...}})\`. Pass ONLY the new fields you captured in this turn — existing data will be merged server-side.`;
+        }. Once you have enough, call \`save_questionnaire_section({section_id: "${nextSub.id}", data: {...}})\`. Pass ONLY the new fields you captured in this turn — existing data will be merged server-side.${basicInfoHints}`;
       } else {
         nextActionBlock = `All 13 Section 2 sub-sections are saved but \`finalize_questionnaire\` hasn't been called. Call it now — the brand profile will be auto-generated.`;
       }
@@ -1152,7 +1228,7 @@ export async function POST(req: NextRequest) {
                   result = await completeScheduleCallsSection(user.id);
                   label = "Milestone calls scheduled";
                 } else if (tc.name === "complete_onboarding") {
-                  result = await completeOnboarding(user.id);
+                  result = await completeOnboarding(user.id, incoming);
                   label = "Onboarding complete";
                   if ((result as any).ok) {
                     emit({ type: "celebrate" });

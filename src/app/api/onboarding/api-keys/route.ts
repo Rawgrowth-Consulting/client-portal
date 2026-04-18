@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendSlackMessage } from "@/lib/slack";
-import type { Id } from "../../../../../convex/_generated/dataModel";
 
-export async function GET(req: NextRequest) {
+// SECURITY: the full key value is sent to Slack once and is NEVER persisted
+// in the database. Only a 4-char hint is kept for reference in api_integrations.
+
+export async function GET() {
   try {
     const user = await getAuthUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const integrations = await convex.query(api.apiIntegrations.list, {
-      clientId: user.id as Id<"clients">,
-    });
+    const { data: integrations } = await supabaseAdmin
+      .from("api_integrations")
+      .select("id, platform, key_name, key_hint, submitted_at")
+      .eq("client_id", user.id)
+      .order("submitted_at", { ascending: false });
 
-    return NextResponse.json({ integrations });
+    return NextResponse.json({ integrations: integrations ?? [] });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -25,28 +28,39 @@ export async function POST(req: NextRequest) {
     const user = await getAuthUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const clientId = user.id as Id<"clients">;
     const { platform, key_name, key_value } = await req.json();
-
+    if (!platform) return NextResponse.json({ error: "platform required" }, { status: 400 });
     if (!key_value) return NextResponse.json({ error: "Key value required" }, { status: 400 });
 
-    const keyHint = key_value.slice(-4);
+    const keyHint = String(key_value).slice(-4);
 
-    // Store hint only in Convex
-    await convex.mutation(api.apiIntegrations.submit, {
-      clientId,
-      platform,
-      keyName: key_name || platform,
-      keyValue: key_value,
-    });
+    const { error } = await supabaseAdmin.from("api_integrations").upsert(
+      {
+        client_id: user.id,
+        platform,
+        key_name: key_name || platform,
+        key_hint: keyHint,
+        submitted_at: new Date().toISOString(),
+      },
+      { onConflict: "client_id,platform,key_name" }
+    );
 
-    // Send full key to Slack securely
+    if (error) {
+      console.error("api-keys upsert error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Send the FULL key to Slack. Never persist it in Supabase.
     const slackChannel = process.env.SLACK_TEAM_CHANNEL;
     if (slackChannel) {
-      const client = await convex.query(api.clients.get, { clientId });
+      const { data: client } = await supabaseAdmin
+        .from("clients")
+        .select("name, company")
+        .eq("id", user.id)
+        .maybeSingle();
       await sendSlackMessage(
         slackChannel,
-        `API Key from ${client?.name} (${client?.company}):\nPlatform: ${platform}\nKey: ${key_value}\n\nStore this securely and delete this message.`
+        `API Key from ${client?.name ?? "client"} (${client?.company ?? ""}):\nPlatform: ${platform}\nKey: ${key_value}\n\nStore this securely and delete this message.`
       );
     }
 

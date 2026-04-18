@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-// Rawclaw agents POST activity events here
-// Auth: bearer token = client's Convex _id
+// Rawclaw agents POST activity events here.
+// Auth: Bearer token = client's Supabase `clients.id` (UUID)
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -14,42 +12,55 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Authorization required" }, { status: 401 });
     }
 
-    // Token is the client's Convex _id
-    let client;
-    try {
-      client = await convex.query(api.clients.get, {
-        clientId: token as Id<"clients">,
-      });
-    } catch {
-      // Not a valid ID format
-    }
+    const { data: client } = await supabaseAdmin
+      .from("clients")
+      .select("id")
+      .eq("id", token)
+      .maybeSingle();
 
     if (!client) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
     const body = await req.json();
-    const { eventType, event_type, title, description, agentName, agent_name, metadata, severity } = body;
+    const {
+      eventType,
+      event_type,
+      title,
+      description,
+      agentName,
+      agent_name,
+      metadata,
+      severity,
+    } = body;
 
     const resolvedEventType = eventType || event_type;
     const resolvedAgentName = agentName || agent_name;
 
     if (!resolvedEventType || !title) {
-      return NextResponse.json({ error: "event_type and title required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "event_type and title required" },
+        { status: 400 }
+      );
     }
 
     const validSeverities = ["info", "success", "warning", "error"];
     const resolvedSeverity = validSeverities.includes(severity) ? severity : "info";
 
-    await convex.mutation(api.activityFeed.log, {
-      clientId: client._id,
-      eventType: resolvedEventType,
+    const { error } = await supabaseAdmin.from("activity_feed").insert({
+      client_id: client.id,
+      event_type: resolvedEventType,
       title,
       description: description || title,
-      agentName: resolvedAgentName || undefined,
-      metadata: metadata || undefined,
+      agent_name: resolvedAgentName || null,
+      metadata: metadata || null,
       severity: resolvedSeverity,
     });
+
+    if (error) {
+      console.error("Rawclaw activity insert error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

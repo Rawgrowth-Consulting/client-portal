@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { api } from "../../../../../convex/_generated/api";
 
 export async function GET() {
   try {
@@ -15,9 +13,17 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const clients = await convex.query(api.clients.listAll, {});
+    const { data: clients, error } = await supabaseAdmin
+      .from("clients")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({ clients });
+    if (error) {
+      console.error("Admin clients list error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ clients: clients ?? [] });
   } catch (err: any) {
     console.error("Admin clients error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

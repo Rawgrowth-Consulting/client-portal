@@ -1,48 +1,59 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const clientId = user.id as Id<"clients">;
-
-    const [client, calls, deliverables, resourceAssignments] = await Promise.all([
-      convex.query(api.clients.get, { clientId }),
-      convex.query(api.scheduledCalls.list, { clientId }),
-      convex.query(api.deliverables.list, { clientId }),
-      convex.query(api.resources.listForClient, { clientId }),
+    const [
+      { data: client },
+      { data: calls },
+      { data: deliverables },
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("clients")
+        .select(
+          "id, name, company, status, health_score, current_month, onboarding_step"
+        )
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("scheduled_calls")
+        .select("*")
+        .eq("client_id", user.id)
+        .order("month", { ascending: true })
+        .order("week", { ascending: true }),
+      supabaseAdmin
+        .from("deliverables")
+        .select("*")
+        .eq("client_id", user.id)
+        .order("completed_at", { ascending: false, nullsFirst: false })
+        .limit(50),
     ]);
 
     if (!client) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const upcomingCalls = (calls || []).filter((c) => !c.completed);
-    const recentDeliverables = (deliverables || [])
-      .filter((d) => d.completed)
-      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+    const upcomingCalls = (calls ?? []).filter((c: any) => !c.completed);
+    const recentDeliverables = (deliverables ?? [])
+      .filter((d: any) => d.completed)
       .slice(0, 3);
-    const unseenResourceCount = (resourceAssignments || []).filter(
-      (r: any) => r.assignment && !r.assignment.seenAt
-    ).length;
+
+    // Resources aren't backed by Supabase yet — always zero for now.
+    const unseenResourceCount = 0;
 
     return NextResponse.json({
       client: {
-        id: client._id,
+        id: client.id,
         name: client.name,
         company: client.company,
         status: client.status,
-        health_score: client.healthScore,
-        current_month: client.currentMonth,
-        onboarding_step: client.onboardingStep,
-        plan: (client as any).plan,
+        health_score: client.health_score,
+        current_month: client.current_month,
+        onboarding_step: client.onboarding_step,
       },
       upcoming_calls: upcomingCalls,
       recent_deliverables: recentDeliverables,
