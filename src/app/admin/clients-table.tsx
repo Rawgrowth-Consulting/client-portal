@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Client } from '@/types';
 
-type SortKey = 'name' | 'company' | 'onboarding_step' | 'health_score' | 'current_month' | 'status';
+type SortKey = 'name' | 'company' | 'health_score' | 'current_month' | 'status';
 type SortDir = 'asc' | 'desc';
 
 function HealthBadge({ score }: { score: number }) {
@@ -153,7 +153,6 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <SortHeader label="Name" sortKey="name" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <SortHeader label="Company" sortKey="company" current={sortKey} direction={sortDir} onClick={handleSort} />
-                <SortHeader label="Onboarding" sortKey="onboarding_step" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <SortHeader label="Health" sortKey="health_score" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <SortHeader label="Month" sortKey="current_month" current={sortKey} direction={sortDir} onClick={handleSort} />
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>Last Activity</th>
@@ -164,7 +163,7 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="px-4 py-12 text-center text-sm"
                     style={{ color: 'rgba(255,255,255,0.35)' }}
                   >
@@ -190,13 +189,6 @@ export function ClientsTable({ clients }: { clients: Client[] }) {
                   </td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
                     {c.company}
-                  </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                    {c.onboarding_completed_at ? (
-                      <span style={{ color: '#0CBF6A' }}>Complete</span>
-                    ) : (
-                      `Step ${c.onboarding_step} / 8`
-                    )}
                   </td>
                   <td className="px-4 py-3">
                     <HealthBadge score={c.health_score} />

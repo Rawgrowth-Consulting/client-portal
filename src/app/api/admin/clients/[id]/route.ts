@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../../convex/_generated/api";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(
   req: NextRequest,
@@ -10,36 +8,25 @@ export async function GET(
 ) {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { id } = await params;
-    const clientId = id as Id<"clients">;
 
-    const [client, onboarding_steps, brand_intake, deliverables, scheduled_calls] = await Promise.all([
-      convex.query(api.clients.get, { clientId }),
-      convex.query(api.clients.getOnboardingSteps, { clientId }),
-      convex.query(api.brandIntake.get, { clientId }),
-      convex.query(api.deliverables.list, { clientId }),
-      convex.query(api.scheduledCalls.list, { clientId }),
+    const [clientRes, intakeRes, deliverablesRes, callsRes, profilesRes] = await Promise.all([
+      supabase.from("clients").select("*").eq("id", id).single(),
+      supabase.from("brand_intakes").select("*").eq("client_id", id).single(),
+      supabase.from("deliverables").select("*").eq("client_id", id),
+      supabase.from("scheduled_calls").select("*").eq("client_id", id),
+      supabase.from("brand_profiles").select("*").eq("client_id", id).order("version", { ascending: false }),
     ]);
 
-    const brand_profiles = client
-      ? [await convex.query(api.brandProfile.get, { clientId })].filter(Boolean)
-      : [];
-
     return NextResponse.json({
-      client,
-      onboarding_steps,
-      brand_intake,
-      brand_profiles,
-      deliverables,
-      scheduled_calls,
+      client: clientRes.data,
+      brand_intake: intakeRes.data,
+      brand_profiles: profilesRes.data || [],
+      deliverables: deliverablesRes.data || [],
+      scheduled_calls: callsRes.data || [],
     });
   } catch (err: any) {
     console.error("Admin client detail error:", err);
@@ -53,37 +40,26 @@ export async function PATCH(
 ) {
   try {
     const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (user.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (user.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { id } = await params;
     const body = await req.json();
 
-    const allowedFields = ["healthScore", "currentMonth", "status", "health_score", "current_month"];
     const fields: Record<string, any> = {};
-
-    // Support both camelCase and snake_case from admin UI
-    if (body.health_score !== undefined) fields.healthScore = body.health_score;
-    if (body.current_month !== undefined) fields.currentMonth = body.current_month;
-    if (body.healthScore !== undefined) fields.healthScore = body.healthScore;
-    if (body.currentMonth !== undefined) fields.currentMonth = body.currentMonth;
+    if (body.health_score !== undefined) fields.health_score = body.health_score;
+    if (body.healthScore !== undefined) fields.health_score = body.healthScore;
+    if (body.current_month !== undefined) fields.current_month = body.current_month;
+    if (body.currentMonth !== undefined) fields.current_month = body.currentMonth;
     if (body.status !== undefined) fields.status = body.status;
 
     if (Object.keys(fields).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    await convex.mutation(api.clients.update, {
-      clientId: id as Id<"clients">,
-      fields,
-    });
+    await supabase.from("clients").update(fields).eq("id", id);
 
-    const client = await convex.query(api.clients.get, { clientId: id as Id<"clients"> });
+    const { data: client } = await supabase.from("clients").select("*").eq("id", id).single();
     return NextResponse.json({ client });
   } catch (err: any) {
     console.error("Admin client update error:", err);

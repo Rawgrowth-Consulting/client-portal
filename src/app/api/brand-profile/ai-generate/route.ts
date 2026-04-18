@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,18 +15,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify the profile exists and is in generating state
-    const profile = await convex.query(api.brandProfile.get, {
-      clientId: clientId as Id<"clients">,
-    });
+    const { data: profile } = await supabase
+      .from("brand_profiles")
+      .select("*")
+      .eq("id", profileId)
+      .single();
 
-    if (!profile || profile._id !== profileId) {
+    if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
     // Get the brand intake
-    const intake = await convex.query(api.brandIntake.get, {
-      clientId: clientId as Id<"clients">,
-    });
+    const { data: intake } = await supabase
+      .from("brand_intakes")
+      .select("*")
+      .eq("client_id", clientId)
+      .single();
 
     if (!intake) {
       return NextResponse.json({ error: "No brand intake found" }, { status: 404 });
@@ -36,19 +38,19 @@ export async function POST(req: NextRequest) {
 
     // Build the prompt from intake data
     const sections = [
-      intake.basicInfo && `Basic Info: ${JSON.stringify(intake.basicInfo)}`,
-      intake.socialPresence && `Social Presence: ${JSON.stringify(intake.socialPresence)}`,
-      intake.originStory && `Origin Story: ${JSON.stringify(intake.originStory)}`,
-      intake.businessModel && `Business Model: ${JSON.stringify(intake.businessModel)}`,
-      intake.targetAudience && `Target Audience: ${JSON.stringify(intake.targetAudience)}`,
-      intake.goals && `Goals: ${JSON.stringify(intake.goals)}`,
-      intake.challenges && `Challenges: ${JSON.stringify(intake.challenges)}`,
-      intake.brandVoice && `Brand Voice: ${JSON.stringify(intake.brandVoice)}`,
-      intake.competitors && `Competitors: ${JSON.stringify(intake.competitors)}`,
-      intake.contentMessaging && `Content & Messaging: ${JSON.stringify(intake.contentMessaging)}`,
-      intake.sales && `Sales: ${JSON.stringify(intake.sales)}`,
-      intake.toolsSystems && `Tools & Systems: ${JSON.stringify(intake.toolsSystems)}`,
-      intake.additionalContext && `Additional Context: ${JSON.stringify(intake.additionalContext)}`,
+      intake.basic_info && Object.keys(intake.basic_info).length && `Basic Info: ${JSON.stringify(intake.basic_info)}`,
+      intake.social_presence && Object.keys(intake.social_presence).length && `Social Presence: ${JSON.stringify(intake.social_presence)}`,
+      intake.origin_story && Object.keys(intake.origin_story).length && `Origin Story: ${JSON.stringify(intake.origin_story)}`,
+      intake.business_model && Object.keys(intake.business_model).length && `Business Model: ${JSON.stringify(intake.business_model)}`,
+      intake.target_audience && Object.keys(intake.target_audience).length && `Target Audience: ${JSON.stringify(intake.target_audience)}`,
+      intake.goals && Object.keys(intake.goals).length && `Goals: ${JSON.stringify(intake.goals)}`,
+      intake.challenges && Object.keys(intake.challenges).length && `Challenges: ${JSON.stringify(intake.challenges)}`,
+      intake.brand_voice && Object.keys(intake.brand_voice).length && `Brand Voice: ${JSON.stringify(intake.brand_voice)}`,
+      intake.competitors && Object.keys(intake.competitors).length && `Competitors: ${JSON.stringify(intake.competitors)}`,
+      intake.content_messaging && Object.keys(intake.content_messaging).length && `Content & Messaging: ${JSON.stringify(intake.content_messaging)}`,
+      intake.sales && Object.keys(intake.sales).length && `Sales: ${JSON.stringify(intake.sales)}`,
+      intake.tools_systems && Object.keys(intake.tools_systems).length && `Tools & Systems: ${JSON.stringify(intake.tools_systems)}`,
+      intake.additional_context && Object.keys(intake.additional_context).length && `Additional Context: ${JSON.stringify(intake.additional_context)}`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -83,23 +85,20 @@ ${sections}`;
     });
 
     if (!response.ok) {
-      // Silently mark ready with empty content — team will fill it manually
-      await convex.mutation(api.brandProfile.updateContent, {
-        profileId: profileId as Id<"brandProfiles">,
-        content: "",
-        status: "ready",
-      });
+      await supabase
+        .from("brand_profiles")
+        .update({ content: "", status: "ready" })
+        .eq("id", profileId);
       return NextResponse.json({ error: "Generation failed" }, { status: 500 });
     }
 
     const result = await response.json();
     const content = result.choices?.[0]?.message?.content || "";
 
-    await convex.mutation(api.brandProfile.updateContent, {
-      profileId: profileId as Id<"brandProfiles">,
-      content,
-      status: "ready",
-    });
+    await supabase
+      .from("brand_profiles")
+      .update({ content, status: "ready" })
+      .eq("id", profileId);
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

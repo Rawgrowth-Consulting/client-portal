@@ -1,8 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { convex } from '@/lib/convex-server';
-import { api } from '../../../../../convex/_generated/api';
-import type { Id } from '../../../../../convex/_generated/dataModel';
-import type { OnboardingStep, Deliverable, BrandProfile } from '@/types';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import Link from 'next/link';
 import { ClientDetailInteractive } from './client-detail-interactive';
 
@@ -11,9 +8,9 @@ const STEP_NAMES: Record<number, string> = {
   2: 'Questionnaire',
   3: 'Brand Profile',
   4: 'Brand Docs',
-  5: 'API Keys',
-  6: 'Software Access',
-  7: 'Schedule Calls',
+  5: 'Software Access',
+  6: 'Schedule Calls',
+  7: 'Activate',
   8: 'Complete',
 };
 
@@ -24,73 +21,56 @@ export default async function ClientDetailPage({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const clientId = id as Id<'clients'>;
 
-  const clientRaw = await convex.query(api.clients.get, { clientId });
-  if (!clientRaw) return <div>Client not found</div>;
+  const { data: client } = await supabaseAdmin
+    .from('clients')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
 
-  // Normalize to snake_case for template compatibility
-  const client = {
-    ...clientRaw,
-    id: clientRaw._id,
-    health_score: clientRaw.healthScore,
-    current_month: clientRaw.currentMonth,
-    onboarding_step: clientRaw.onboardingStep,
-    onboarding_completed_at: clientRaw.onboardingCompletedAt,
-    slack_channel_id: clientRaw.slackChannelId,
-  };
+  if (!client) return <div>Client not found</div>;
 
-  let onboardingSteps: any[] = [];
-  try {
-    const steps = await convex.query(api.clients.getOnboardingSteps, { clientId });
-    // Normalize step fields for template
-    onboardingSteps = steps.map((s) => ({
-      ...s,
-      step_number: s.stepNumber,
-      completed_at: s.completedAt,
-    }));
-  } catch {}
+  const isComplete = client.status === 'active';
 
-  let deliverables: any[] = [];
-  try {
-    const del = await convex.query(api.deliverables.list, { clientId });
-    deliverables = del.map((d) => ({
-      ...d,
-      completed_at: d.completedAt,
-    }));
-  } catch {}
+  // Brand profile (latest version)
+  const { data: brandProfile } = await supabaseAdmin
+    .from('brand_profiles')
+    .select('*')
+    .eq('client_id', id)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  let brandProfile: any = null;
-  try {
-    const profile = await convex.query(api.brandProfile.get, { clientId });
-    brandProfile = profile;
-  } catch {}
+  // Brand intake (Section 2 questionnaire)
+  const { data: intake } = await supabaseAdmin
+    .from('brand_intakes')
+    .select('*')
+    .eq('client_id', id)
+    .maybeSingle();
 
-  let questionnaireData: Record<string, any> | null = null;
-  try {
-    const intake = await convex.query(api.brandIntake.get, { clientId });
-    if (intake) {
-      questionnaireData = {
-        basic_info: intake.basicInfo,
-        social_presence: intake.socialPresence,
-        origin_story: intake.originStory,
-        business_model: intake.businessModel,
-        target_audience: intake.targetAudience,
+  const questionnaireData: Record<string, any> | null = intake
+    ? {
+        basic_info: intake.basic_info,
+        social_presence: intake.social_presence,
+        origin_story: intake.origin_story,
+        business_model: intake.business_model,
+        target_audience: intake.target_audience,
         goals: intake.goals,
         challenges: intake.challenges,
-        brand_voice: intake.brandVoice,
+        brand_voice: intake.brand_voice,
         competitors: intake.competitors,
-        content_messaging: intake.contentMessaging,
+        content_messaging: intake.content_messaging,
         sales: intake.sales,
-        tools_systems: intake.toolsSystems,
-        additional_context: intake.additionalContext,
-        call_data: intake.callData,
-      };
-    }
-  } catch {}
+        tools_systems: intake.tools_systems,
+        additional_context: intake.additional_context,
+        call_data: intake.call_data,
+      }
+    : null;
 
+  // Deliverables — no Supabase table yet, show empty list.
+  const deliverables: any[] = [];
 
-  // Rawclaw install status (heartbeat not implemented -- activity-based only)
+  // Rawclaw heartbeat — not implemented in Supabase yet.
   const rawclawInstall: any = null;
 
   return (
@@ -156,10 +136,27 @@ export default async function ClientDetailPage({
       {/* Stats row */}
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
-          { label: 'Health Score', value: String(client.health_score), color: client.health_score >= 80 ? '#0CBF6A' : client.health_score >= 60 ? '#eab308' : '#ef4444' },
-          { label: 'Current Month', value: String(client.current_month), color: '#0CBF6A' },
-          { label: 'Onboarding', value: client.onboarding_completed_at ? 'Complete' : `Step ${client.onboarding_step}/8`, color: client.onboarding_completed_at ? '#0CBF6A' : '#3b82f6' },
-          { label: 'Deliverables', value: `${deliverables.filter((d) => d.completed).length}/${deliverables.length}`, color: '#0CBF6A' },
+          {
+            label: 'Health Score',
+            value: String(client.health_score ?? 0),
+            color:
+              (client.health_score ?? 0) >= 80
+                ? '#0CBF6A'
+                : (client.health_score ?? 0) >= 60
+                  ? '#eab308'
+                  : '#ef4444',
+          },
+          { label: 'Current Month', value: String(client.current_month ?? 1), color: '#0CBF6A' },
+          {
+            label: 'Onboarding',
+            value: isComplete ? 'Complete' : `Step ${client.onboarding_step ?? 1}/8`,
+            color: isComplete ? '#0CBF6A' : '#3b82f6',
+          },
+          {
+            label: 'Deliverables',
+            value: `${deliverables.filter((d) => d.completed).length}/${deliverables.length}`,
+            color: '#0CBF6A',
+          },
         ].map((stat) => (
           <div
             key={stat.label}
@@ -168,7 +165,9 @@ export default async function ClientDetailPage({
           >
             <div
               className="absolute inset-x-0 top-0 h-px"
-              style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+              style={{
+                background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)',
+              }}
             />
             <div className="text-2xl font-medium" style={{ color: stat.color }}>
               {stat.value}
@@ -187,24 +186,37 @@ export default async function ClientDetailPage({
       >
         <div
           className="h-px w-full"
-          style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+          style={{
+            background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)',
+          }}
         />
         <div className="p-6">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h2
+            className="mb-4 text-sm font-semibold uppercase tracking-wider"
+            style={{ color: 'rgba(255,255,255,0.6)' }}
+          >
             Onboarding Progress
           </h2>
           <div className="grid gap-2">
             {Array.from({ length: 8 }, (_, i) => {
               const stepNum = i + 1;
-              const step = onboardingSteps.find((s) => s.step_number === stepNum);
-              const completed = step?.completed || stepNum < client.onboarding_step;
-              const current = stepNum === client.onboarding_step && !client.onboarding_completed_at;
+              const currentStep = client.onboarding_step ?? 1;
+              const completed = isComplete || stepNum < currentStep;
+              const current = !isComplete && stepNum === currentStep;
               return (
-                <div key={stepNum} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: current ? 'rgba(12,191,106,0.06)' : 'transparent' }}>
+                <div
+                  key={stepNum}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2"
+                  style={{ background: current ? 'rgba(12,191,106,0.06)' : 'transparent' }}
+                >
                   <div
                     className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
                     style={{
-                      background: completed ? '#0CBF6A' : current ? 'rgba(12,191,106,0.2)' : 'rgba(255,255,255,0.06)',
+                      background: completed
+                        ? '#0CBF6A'
+                        : current
+                          ? 'rgba(12,191,106,0.2)'
+                          : 'rgba(255,255,255,0.06)',
                       color: completed ? '#fff' : current ? '#0CBF6A' : 'rgba(255,255,255,0.35)',
                     }}
                   >
@@ -212,15 +224,16 @@ export default async function ClientDetailPage({
                   </div>
                   <span
                     className="text-sm"
-                    style={{ color: completed ? 'rgba(255,255,255,0.6)' : current ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.35)' }}
+                    style={{
+                      color: completed
+                        ? 'rgba(255,255,255,0.6)'
+                        : current
+                          ? 'rgba(255,255,255,0.92)'
+                          : 'rgba(255,255,255,0.35)',
+                    }}
                   >
                     {STEP_NAMES[stepNum]}
                   </span>
-                  {step?.completed_at && (
-                    <span className="ml-auto text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                      {new Date(step.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  )}
                 </div>
               );
             })}
@@ -236,10 +249,15 @@ export default async function ClientDetailPage({
         >
           <div
             className="h-px w-full"
-            style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+            style={{
+              background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)',
+            }}
           />
           <div className="p-6">
-            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <h2
+              className="mb-4 text-sm font-semibold uppercase tracking-wider"
+              style={{ color: 'rgba(255,255,255,0.6)' }}
+            >
               Questionnaire Responses
             </h2>
             <QuestionnaireViewer data={questionnaireData} />
@@ -251,7 +269,7 @@ export default async function ClientDetailPage({
       <ClientDetailInteractive
         clientId={id}
         deliverables={deliverables}
-        healthScore={client.health_score}
+        healthScore={client.health_score ?? 0}
       />
 
       {/* Touchpoints Log */}
@@ -261,13 +279,21 @@ export default async function ClientDetailPage({
       >
         <div
           className="h-px w-full"
-          style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+          style={{
+            background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)',
+          }}
         />
         <div className="p-6">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h2
+            className="mb-4 text-sm font-semibold uppercase tracking-wider"
+            style={{ color: 'rgba(255,255,255,0.6)' }}
+          >
             Touchpoints Log
           </h2>
-          <div className="rounded-lg px-4 py-8 text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <div
+            className="rounded-lg px-4 py-8 text-center"
+            style={{ background: 'rgba(255,255,255,0.02)' }}
+          >
             <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
               Touchpoint tracking coming soon. All calls, emails, and check-ins will appear here.
             </p>
@@ -282,18 +308,27 @@ export default async function ClientDetailPage({
       >
         <div
           className="h-px w-full"
-          style={{ background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)' }}
+          style={{
+            background: 'linear-gradient(to right, transparent, rgba(12,191,106,0.3), transparent)',
+          }}
         />
         <div className="p-6">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h2
+            className="mb-4 text-sm font-semibold uppercase tracking-wider"
+            style={{ color: 'rgba(255,255,255,0.6)' }}
+          >
             Rawclaw Status
           </h2>
           {rawclawInstall ? (
             <RawclawStatusCard install={rawclawInstall} />
           ) : (
-            <div className="rounded-lg px-4 py-8 text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+            <div
+              className="rounded-lg px-4 py-8 text-center"
+              style={{ background: 'rgba(255,255,255,0.02)' }}
+            >
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                No install detected. Setup token will appear on the client&apos;s onboarding complete page.
+                No install detected. Setup token will appear on the client&apos;s onboarding complete
+                page.
               </p>
             </div>
           )}
@@ -342,14 +377,20 @@ function QuestionnaireViewer({ data }: { data: Record<string, any> }) {
             style={{ color: 'rgba(255,255,255,0.6)' }}
           >
             <span className="text-sm font-medium">{label}</span>
-            <span className="text-[10px] transition-transform group-open:rotate-90" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span
+              className="text-[10px] transition-transform group-open:rotate-90"
+              style={{ color: 'rgba(255,255,255,0.35)' }}
+            >
               {'\u25B6'}
             </span>
           </summary>
           <div className="mt-1 rounded-lg px-4 py-3" style={{ background: 'rgba(255,255,255,0.02)' }}>
             {Object.entries(data[key] as Record<string, any>).map(([field, value]) => (
               <div key={field} className="mb-2 last:mb-0">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                <span
+                  className="text-[11px] font-medium uppercase tracking-wider"
+                  style={{ color: 'rgba(255,255,255,0.35)' }}
+                >
                   {field.replace(/_/g, ' ')}
                 </span>
                 <p className="mt-0.5 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -368,9 +409,10 @@ function RawclawStatusCard({ install }: { install: any }) {
   const lastHeartbeat = new Date(install.last_heartbeat);
   const minutesAgo = Math.floor((Date.now() - lastHeartbeat.getTime()) / 60000);
   const isOnline = minutesAgo < 10;
-  const agents: string[] = typeof install.active_agents === 'string'
-    ? JSON.parse(install.active_agents || '[]')
-    : (install.active_agents || []);
+  const agents: string[] =
+    typeof install.active_agents === 'string'
+      ? JSON.parse(install.active_agents || '[]')
+      : install.active_agents || [];
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -390,12 +432,19 @@ function RawclawStatusCard({ install }: { install: any }) {
             <span style={{ color: 'rgba(255,255,255,0.6)' }}>
               {minutesAgo < 60
                 ? `${minutesAgo}m ago`
-                : lastHeartbeat.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                : lastHeartbeat.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span style={{ color: 'rgba(255,255,255,0.4)' }}>Version</span>
-            <span style={{ color: 'rgba(255,255,255,0.6)' }}>{install.rawclaw_version || 'unknown'}</span>
+            <span style={{ color: 'rgba(255,255,255,0.6)' }}>
+              {install.rawclaw_version || 'unknown'}
+            </span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <span style={{ color: 'rgba(255,255,255,0.4)' }}>Machine ID</span>
@@ -406,7 +455,10 @@ function RawclawStatusCard({ install }: { install: any }) {
         </div>
       </div>
       <div>
-        <div className="mb-2 text-xs font-medium uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>
+        <div
+          className="mb-2 text-xs font-medium uppercase tracking-wider"
+          style={{ color: 'rgba(255,255,255,0.35)' }}
+        >
           Active Agents
         </div>
         {agents.length > 0 ? (
@@ -422,10 +474,11 @@ function RawclawStatusCard({ install }: { install: any }) {
             ))}
           </div>
         ) : (
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>No agents reported</p>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            No agents reported
+          </p>
         )}
       </div>
     </div>
   );
 }
-

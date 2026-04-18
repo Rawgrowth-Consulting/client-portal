@@ -1,4 +1,5 @@
 import type { ScheduledCall } from '@/types';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 function formatCallDate(dateStr: string | null): string {
   if (!dateStr) return 'Not yet scheduled';
@@ -30,19 +31,12 @@ export default async function CallsPage() {
   const past = calls.filter((c) => !isUpcoming(c));
 
   return (
-    <div className="mx-auto max-w-[960px] px-6 py-10">
-      <div className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-widest" style={{ color: '#0CBF6A' }}>
-          Calls
-        </p>
-        <h2 className="mt-1 text-xl font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          Milestone Calls
-        </h2>
-        <p className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Scheduled check-ins keep your 4-month journey on track. Each call covers progress, blockers, and
-          next steps.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="Calls"
+        title="Milestone Calls"
+        description="Scheduled check-ins keep your 4-month journey on track. Each call covers progress, blockers, and next steps."
+      />
 
       {/* Upcoming */}
       <div className="mb-8">

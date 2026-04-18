@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
+import { supabase } from "@/lib/supabase";
 import { sendMagicLinkEmail } from "@/lib/resend";
 import crypto from "crypto";
 
@@ -10,9 +9,13 @@ export async function POST(req: NextRequest) {
     if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
 
     // Check if client exists with this email
-    const client = await convex.query(api.clients.getByEmail, { email });
+    const { data: client, error: clientErr } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("email", email)
+      .single();
 
-    if (!client) {
+    if (clientErr || !client) {
       return NextResponse.json({ error: "No account found for this email" }, { status: 404 });
     }
 
@@ -20,16 +23,26 @@ export async function POST(req: NextRequest) {
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
-    // Store magic link in Convex
-    await convex.mutation(api.magicLinks.create, { email, token, expiresAt });
+    // Clean up old unused tokens for this email
+    await supabase.from("magic_links").delete().eq("email", email);
 
-    // Send email
-    const result = await sendMagicLinkEmail(email, token);
+    // Store magic link in Supabase
+    const { error: insertErr } = await supabase
+      .from("magic_links")
+      .insert({ email, token, expires_at: expiresAt });
 
-    return NextResponse.json({
-      success: true,
-      ...(result && "link" in result && !process.env.RESEND_API_KEY ? { debug_link: result.link } : {}),
-    });
+    if (insertErr) throw insertErr;
+
+
+
+    // Send email (may fail in dev if domain not verified)
+    try {
+      await sendMagicLinkEmail(email, token);
+    } catch (emailErr) {
+      console.warn("Email sending failed (using console link instead):", emailErr);
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     console.error("Magic link error:", err);
     return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });

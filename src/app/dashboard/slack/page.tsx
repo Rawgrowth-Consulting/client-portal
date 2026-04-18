@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 interface SlackMessage {
   id: string;
@@ -60,8 +61,7 @@ export default function SlackPage() {
   if (!hasChannel) {
     return (
       <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-widest text-[#0CBF6A]">Slack</p>
-        <h1 className="mb-8 text-2xl font-medium tracking-tight" style={{ color: 'rgba(255,255,255,0.92)' }}>Team Channel</h1>
+        <PageHeader eyebrow="Slack" title="Team Channel" />
         <div className="flex flex-col items-center justify-center rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] py-20">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5"><path d="M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
           <p className="mt-4 text-sm text-[rgba(255,255,255,0.5)]">Your Slack channel hasn't been connected yet.</p>
@@ -75,15 +75,16 @@ export default function SlackPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-[#0CBF6A]">Slack</p>
-          <h1 className="text-2xl font-medium tracking-tight" style={{ color: 'rgba(255,255,255,0.92)' }}>Team Channel</h1>
-        </div>
-        <a href="https://rawgrowth.slack.com" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-[rgba(255,255,255,0.12)] px-4 py-2 text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white">
+      <PageHeader eyebrow="Slack" title="Team Channel">
+        <a
+          href="https://rawgrowth.slack.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center rounded-lg border border-[rgba(255,255,255,0.12)] px-4 py-2 text-xs font-medium text-[rgba(255,255,255,0.6)] hover:text-white"
+        >
           Open in Slack
         </a>
-      </div>
+      </PageHeader>
 
       <div className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-4" style={{ minHeight: '400px', maxHeight: '600px', overflowY: 'auto' }}>
         {loading ? (

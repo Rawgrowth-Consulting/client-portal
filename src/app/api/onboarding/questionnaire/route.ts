@@ -1,17 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
+
+const SECTION_TO_COLUMN: Record<string, string> = {
+  basicInfo: "basic_info",
+  socialPresence: "social_presence",
+  originStory: "origin_story",
+  businessModel: "business_model",
+  targetAudience: "target_audience",
+  goals: "goals",
+  challenges: "challenges",
+  brandVoice: "brand_voice",
+  competitors: "competitors",
+  contentMessaging: "content_messaging",
+  sales: "sales",
+  toolsSystems: "tools_systems",
+  additionalContext: "additional_context",
+};
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const intake = await convex.query(api.brandIntake.get, {
-      clientId: user.id as Id<"clients">,
-    });
+    const { data: intake } = await supabase
+      .from("brand_intakes")
+      .select("*")
+      .eq("client_id", user.id)
+      .single();
 
     return NextResponse.json({ intake });
   } catch (err: any) {
@@ -25,12 +41,15 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { section_id, data } = await req.json();
+    const col = SECTION_TO_COLUMN[section_id];
+    if (!col) return NextResponse.json({ error: "Invalid section" }, { status: 400 });
 
-    await convex.mutation(api.brandIntake.saveSection, {
-      clientId: user.id as Id<"clients">,
-      section: section_id,
-      data,
-    });
+    await supabase
+      .from("brand_intakes")
+      .upsert(
+        { client_id: user.id, [col]: data },
+        { onConflict: "client_id" }
+      );
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

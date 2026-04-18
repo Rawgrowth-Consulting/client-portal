@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Client, ApiIntegration } from '@/types';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { User, Plug, Bell } from 'lucide-react';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 export default function SettingsPage() {
   const [client, setClient] = useState<Client | null>(null);
@@ -70,26 +73,33 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-[960px] px-6 py-10">
-        <div className="flex items-center justify-center py-20">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[#0CBF6A]" />
-        </div>
+      <div className="flex items-center justify-center py-20">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[rgba(255,255,255,0.1)] border-t-[#0CBF6A]" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-[720px] px-6 py-10">
-      <div className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-widest" style={{ color: '#0CBF6A' }}>
-          Settings
-        </p>
-        <h2 className="mt-1 text-xl font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          Account Settings
-        </h2>
-      </div>
+    <div>
+      <PageHeader eyebrow="Settings" title="Account Settings" />
 
-      <div className="space-y-6">
+      <Tabs defaultValue="profile" className="gap-6">
+        <TabsList>
+          <TabsTrigger value="profile">
+            <User />
+            Profile
+          </TabsTrigger>
+          <TabsTrigger value="integrations">
+            <Plug />
+            Integrations
+          </TabsTrigger>
+          <TabsTrigger value="notifications">
+            <Bell />
+            Notifications
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profile">
         {/* Profile Section */}
         <div
           className="relative overflow-hidden rounded-xl p-6"
@@ -194,6 +204,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        </TabsContent>
+
+        <TabsContent value="integrations">
         {/* Connected Platforms */}
         <div
           className="rounded-xl p-6"
@@ -265,6 +278,9 @@ export default function SettingsPage() {
           )}
         </div>
 
+        </TabsContent>
+
+        <TabsContent value="notifications">
         {/* Notification Preferences */}
         <div
           className="rounded-xl p-6"
@@ -348,48 +364,8 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
-
-        {/* Sign Out */}
-        <div
-          className="rounded-xl p-6"
-          style={{ background: '#0A1210', border: '1px solid rgba(255,255,255,0.06)' }}
-        >
-          <h3
-            className="mb-1 text-xs font-medium uppercase tracking-wider"
-            style={{ color: 'rgba(255,255,255,0.4)' }}
-          >
-            Session
-          </h3>
-          <p className="mb-4 text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-            Sign out of your portal session. You can sign back in with a magic link.
-          </p>
-          <button
-            onClick={handleSignOut}
-            className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-colors hover:border-[rgba(239,68,68,0.3)]"
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.6)',
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign Out
-          </button>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

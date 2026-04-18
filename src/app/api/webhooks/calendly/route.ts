@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendSlackMessage } from "@/lib/slack";
-import type { Id } from "../../../../../convex/_generated/dataModel";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,29 +12,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    const email = payload?.email || payload?.invitee?.email;
-    if (!email) return NextResponse.json({ received: true });
+    const rawEmail: string | undefined =
+      payload?.email || payload?.invitee?.email;
+    if (!rawEmail) return NextResponse.json({ received: true });
+    const email = rawEmail.trim().toLowerCase();
 
     // Find client by email
-    const client = await convex.query(api.clients.getByEmail, { email });
+    const { data: client } = await supabaseAdmin
+      .from("clients")
+      .select("id, name, company")
+      .eq("email", email)
+      .maybeSingle();
+
     if (!client) return NextResponse.json({ received: true });
 
-    // Find first unscheduled call and mark it scheduled
-    const calls = await convex.query(api.scheduledCalls.list, { clientId: client._id });
-    const unscheduled = calls.filter((c) => !c.scheduledAt && !c.completed);
+    // Pick the earliest unscheduled, non-completed call for this client
+    const { data: unscheduledCalls } = await supabaseAdmin
+      .from("scheduled_calls")
+      .select("id, title, month, week")
+      .eq("client_id", client.id)
+      .eq("completed", false)
+      .is("scheduled_at", null)
+      .order("month", { ascending: true })
+      .order("week", { ascending: true })
+      .limit(1);
 
-    if (unscheduled.length > 0) {
+    const next = unscheduledCalls?.[0];
+    if (next) {
       const scheduledAt = payload?.scheduled_event?.start_time
         ? new Date(payload.scheduled_event.start_time).getTime()
         : Date.now();
 
-      await convex.mutation(api.scheduledCalls.schedule, {
-        clientId: client._id,
-        title: unscheduled[0].title,
-        month: unscheduled[0].month,
-        week: unscheduled[0].week,
-        scheduledAt,
-      });
+      await supabaseAdmin
+        .from("scheduled_calls")
+        .update({ scheduled_at: scheduledAt })
+        .eq("id", next.id);
     }
 
     // Notify Slack

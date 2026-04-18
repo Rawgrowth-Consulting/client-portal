@@ -1,20 +1,16 @@
-import { cookies } from "next/headers";
-import { convex } from "./convex-server";
-import { api } from "../../convex/_generated/api";
+import { auth } from "./auth-config";
+import { supabase } from "./supabase";
 import { redirect } from "next/navigation";
-import type { Id } from "../../convex/_generated/dataModel";
 
 export async function getAuthUser(): Promise<{ id: string; email: string; name: string; role: string } | null> {
-  const cookieStore = await cookies();
-  const authCookie = cookieStore.get("convex_auth");
-  if (!authCookie?.value) return null;
-  try {
-    const { model } = JSON.parse(authCookie.value);
-    if (!model?.id) return null;
-    return model;
-  } catch {
-    return null;
-  }
+  const session = await auth();
+  if (!session?.user) return null;
+  return {
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+    role: session.user.role,
+  };
 }
 
 export async function getAuthenticatedClient() {
@@ -22,9 +18,11 @@ export async function getAuthenticatedClient() {
     const user = await getAuthUser();
     if (!user) return null;
 
-    const client = await convex.query(api.clients.get, {
-      clientId: user.id as Id<"clients">,
-    });
+    const { data: client } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", user.id)
+      .single();
 
     if (!client) return null;
     return { client };
@@ -43,18 +41,20 @@ export async function requireAdmin() {
   const user = await getAuthUser();
   if (!user) redirect("/login");
 
-  const client = await convex.query(api.clients.get, {
-    clientId: user.id as Id<"clients">,
-  });
+  const { data: client } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", user.id)
+    .single();
 
   if (!client) redirect("/login");
   if (client.role !== "admin") redirect("/dashboard");
   return { client };
 }
 
-export function getOnboardingRedirect(client: { onboardingCompletedAt?: number; onboardingStep?: number }): string {
-  if (client.onboardingCompletedAt) return "/dashboard";
-  const step = client.onboardingStep || 1;
+export function getOnboardingRedirect(client: { status?: string; onboarding_step?: number }): string {
+  if (client.status === "active") return "/dashboard";
+  const step = client.onboarding_step || 1;
   const stepNames: Record<number, string> = {
     1: "1-welcome",
     2: "2-questionnaire",

@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendSlackMessage } from "@/lib/slack";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+
+const STEP_NAMES: Record<number, string> = {
+  1: "Welcome",
+  2: "Questionnaire",
+  3: "Brand Profile",
+  4: "Brand Documents",
+  5: "API Keys",
+  6: "Software Access",
+  7: "Schedule Calls",
+  8: "Complete",
+};
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,50 +21,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const clientId = user.id as Id<"clients">;
     const { step, data } = await req.json();
+    if (typeof step !== "number") {
+      return NextResponse.json({ error: "step required" }, { status: 400 });
+    }
 
-    const stepNames: Record<number, string> = {
-      1: "Welcome", 2: "Questionnaire", 3: "Brand Profile", 4: "Brand Documents",
-      5: "API Keys", 6: "Software Access", 7: "Schedule Calls", 8: "Complete",
-    };
-
-    // Upsert the onboarding step
-    await convex.mutation(api.onboardingSteps.upsert, {
-      clientId,
-      stepNumber: step,
-      stepName: stepNames[step] || `Step ${step}`,
-      data: data || {},
-    });
-
-    // Advance client's onboarding step
     const nextStep = Math.min(step + 1, 8);
-    const updateFields: Record<string, any> = { onboardingStep: nextStep };
+    const updateFields: Record<string, any> = {
+      onboarding_step: nextStep,
+      updated_at: new Date().toISOString(),
+    };
 
     // Save slack channel if provided in step 1
     if (step === 1 && data?.slack_channel) {
-      updateFields.slackChannelId = data.slack_channel;
+      updateFields.slack_channel_id = data.slack_channel;
     }
 
-    // Mark onboarding complete at step 8
+    // Onboarding complete at step 8 — flip status to active
     if (step >= 8) {
-      updateFields.onboardingCompletedAt = Date.now();
       updateFields.status = "active";
     }
 
-    await convex.mutation(api.clients.update, {
-      clientId,
-      fields: updateFields,
-    });
+    const { error } = await supabaseAdmin
+      .from("clients")
+      .update(updateFields)
+      .eq("id", user.id);
+    if (error) {
+      console.error("Onboarding step update error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
     // Notify Slack
     const slackChannel = process.env.SLACK_TEAM_CHANNEL;
     if (slackChannel) {
-      const client = await convex.query(api.clients.get, { clientId });
+      const { data: client } = await supabaseAdmin
+        .from("clients")
+        .select("name")
+        .eq("id", user.id)
+        .maybeSingle();
       const clientName = client?.name || user.email;
       await sendSlackMessage(
         slackChannel,
-        `${clientName} completed onboarding step ${step}: ${stepNames[step]}`
+        `${clientName} completed onboarding step ${step}: ${STEP_NAMES[step] || `Step ${step}`}`
       );
     }
 

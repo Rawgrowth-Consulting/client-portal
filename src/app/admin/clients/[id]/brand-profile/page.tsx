@@ -1,7 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { convex } from '@/lib/convex-server';
-import { api } from '../../../../../../convex/_generated/api';
-import type { Id } from '../../../../../../convex/_generated/dataModel';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { BrandProfileEditor } from './brand-profile-editor';
 
@@ -12,15 +10,22 @@ export default async function BrandProfilePage({
 }) {
   await requireAdmin();
   const { id } = await params;
-  const clientId = id as Id<'clients'>;
 
-  const clientRaw = await convex.query(api.clients.get, { clientId });
+  const { data: clientRaw } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', id)
+    .single();
+
   if (!clientRaw) return <div>Client not found</div>;
 
-  let brandProfile: any = null;
-  try {
-    brandProfile = await convex.query(api.brandProfile.get, { clientId });
-  } catch {}
+  const { data: brandProfile } = await supabase
+    .from('brand_profiles')
+    .select('*')
+    .eq('client_id', id)
+    .order('version', { ascending: false })
+    .limit(1)
+    .single();
 
   return (
     <div>

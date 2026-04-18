@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../../convex/_generated/api";
+import { supabase } from "@/lib/supabase";
 import { sendSlackMessage } from "@/lib/slack";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,11 +10,12 @@ export async function POST(req: NextRequest) {
 
     const { feedback } = await req.json();
 
-    const client = await convex.query(api.clients.get, {
-      clientId: user.id as Id<"clients">,
-    });
+    const { data: client } = await supabase
+      .from("clients")
+      .select("name")
+      .eq("id", user.id)
+      .single();
 
-    // Notify Slack
     const slackChannel = process.env.SLACK_TEAM_CHANNEL;
     if (slackChannel && client) {
       await sendSlackMessage(slackChannel, `Brand profile feedback from ${client.name}: ${feedback}`);

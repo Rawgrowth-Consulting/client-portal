@@ -1,48 +1,47 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
-import { Id } from '../../../convex/_generated/dataModel';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 export default function DashboardHome() {
-  const [clientId, setClientId] = useState<string | null>(null);
+  const { data: session } = useSession();
+  const [client, setClient] = useState<any>(null);
+  const [calls, setCalls] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
 
   useEffect(() => {
-    setClientId(localStorage.getItem('rg_client_id'));
-  }, []);
+    if (!session?.user?.id) return;
 
-  const client = useQuery(
-    api.clients.get,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
+    async function fetchData() {
+      const [clientRes, callsRes, activityRes] = await Promise.all([
+        supabase.from('clients').select('*').eq('id', session!.user.id).single(),
+        supabase.from('scheduled_calls').select('*').eq('client_id', session!.user.id).order('scheduled_at', { ascending: true }),
+        supabase.from('activity_feed').select('*').eq('client_id', session!.user.id).order('created_at', { ascending: false }).limit(5),
+      ]);
 
-  const calls = useQuery(
-    api.scheduledCalls.list,
-    clientId ? { clientId: clientId as Id<'clients'> } : 'skip'
-  );
+      if (clientRes.data) setClient(clientRes.data);
+      if (callsRes.data) setCalls(callsRes.data);
+      if (activityRes.data) setActivity(activityRes.data);
+    }
 
-  const activity = useQuery(
-    api.activityFeed.list,
-    clientId ? { clientId: clientId as Id<'clients'>, limit: 5 } : 'skip'
-  );
+    fetchData();
+  }, [session?.user?.id]);
 
-  const healthScore = client?.healthScore || 0;
-  const currentMonth = client?.currentMonth || 1;
+  const healthScore = client?.health_score || 0;
+  const currentMonth = client?.current_month || 1;
   const healthColor = healthScore >= 80 ? '#0CBF6A' : healthScore >= 60 ? '#F59E0B' : '#ef4444';
 
-  const upcomingCalls = (calls || []).filter((c) => !c.completed);
+  const upcomingCalls = calls.filter((c) => !c.completed);
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <p className="mb-1 text-xs font-medium uppercase tracking-widest text-[#0CBF6A]">Dashboard</p>
-        <h1 className="text-2xl font-medium tracking-tight" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          Welcome back{client?.name ? `, ${client.name.split(' ')[0]}` : ''}.
-        </h1>
-      </div>
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome back${session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}.`}
+      />
 
       {/* Top row: Health + Month + Calls */}
       <div className="mb-6 grid gap-4 md:grid-cols-3">
@@ -80,32 +79,13 @@ export default function DashboardHome() {
             <>
               <p className="text-lg font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>{upcomingCalls[0].title}</p>
               <p className="mt-1 text-xs text-[rgba(255,255,255,0.4)]">
-                {upcomingCalls[0].scheduledAt ? new Date(upcomingCalls[0].scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Not yet scheduled'}
+                {upcomingCalls[0].scheduled_at ? new Date(upcomingCalls[0].scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Not yet scheduled'}
               </p>
             </>
           ) : (
             <p className="text-sm text-[rgba(255,255,255,0.4)]">No upcoming calls</p>
           )}
         </div>
-      </div>
-
-      {/* Quick Links */}
-      <div className="mb-6 grid gap-3 md:grid-cols-4">
-        {[
-          { href: '/dashboard/brand-profile', label: 'Brand Profile', desc: 'View your profile' },
-          { href: '/dashboard/resources', label: 'Resources', desc: 'Downloads & tools' },
-          { href: '/dashboard/journey', label: 'My Journey', desc: '4-month roadmap' },
-          { href: '/dashboard/settings', label: 'Settings', desc: 'Account settings' },
-        ].map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-4 transition-colors hover:border-[rgba(12,191,106,0.2)]"
-          >
-            <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>{link.label}</p>
-            <p className="text-xs text-[rgba(255,255,255,0.35)]">{link.desc}</p>
-          </Link>
-        ))}
       </div>
 
       {/* Activity Feed */}
@@ -116,10 +96,10 @@ export default function DashboardHome() {
             View all
           </Link>
         </div>
-        {(activity || []).length > 0 ? (
+        {activity.length > 0 ? (
           <div className="space-y-3">
-            {(activity || []).map((event) => (
-              <div key={event._id} className="flex items-start gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
+            {activity.map((event) => (
+              <div key={event.id} className="flex items-start gap-3 rounded-lg bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
                 <div className={`mt-0.5 h-2 w-2 flex-shrink-0 rounded-full ${
                   event.severity === 'success' ? 'bg-[#0CBF6A]' :
                   event.severity === 'warning' ? 'bg-[#F59E0B]' :
@@ -129,8 +109,8 @@ export default function DashboardHome() {
                   <p className="text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>{event.title}</p>
                   <p className="text-xs text-[rgba(255,255,255,0.35)]">{event.description}</p>
                 </div>
-                {event.agentName && (
-                  <span className="rounded bg-[rgba(255,255,255,0.05)] px-2 py-0.5 text-[10px] font-medium text-[rgba(255,255,255,0.4)]">{event.agentName}</span>
+                {event.agent_name && (
+                  <span className="rounded bg-[rgba(255,255,255,0.05)] px-2 py-0.5 text-[10px] font-medium text-[rgba(255,255,255,0.4)]">{event.agent_name}</span>
                 )}
               </div>
             ))}
