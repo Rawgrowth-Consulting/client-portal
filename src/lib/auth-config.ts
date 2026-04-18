@@ -48,18 +48,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
     async authorized({ auth, request }) {
-      const { pathname } = request.nextUrl;
+      const { pathname, origin } = request.nextUrl;
       const publicRoutes = ["/login", "/api/auth/", "/api/webhooks/", "/api/rawclaw/"];
       const isPublic = publicRoutes.some((route) => pathname.startsWith(route));
       if (isPublic) return true;
 
-      const isProtected =
-        pathname.startsWith("/dashboard") ||
-        pathname.startsWith("/onboarding") ||
-        pathname.startsWith("/admin");
-      if (isProtected && !auth) {
-        return Response.redirect(new URL("/login", request.nextUrl));
+      const isAdminArea = pathname.startsWith("/admin");
+      const isClientArea =
+        pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding");
+      const isProtected = isAdminArea || isClientArea;
+      if (!isProtected) return true;
+
+      if (!auth) {
+        return Response.redirect(new URL("/login", origin));
       }
+
+      const role = auth.user?.role;
+
+      if (isAdminArea && role !== "admin") {
+        return Response.redirect(new URL("/dashboard", origin));
+      }
+
+      if (isClientArea && role === "admin") {
+        return Response.redirect(new URL("/admin", origin));
+      }
+
       return true;
     },
   },

@@ -1,5 +1,6 @@
 import type { Deliverable } from '@/types';
 import JourneyTimeline from './JourneyTimeline';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 const MONTH_PLAN: Record<number, { label: string; focus: string }> = {
   1: { label: 'Month 1', focus: 'Content + Offer' },
@@ -14,19 +15,12 @@ export default async function JourneyPage() {
   const currentWeek = 1;
 
   return (
-    <div className="mx-auto max-w-[960px] px-6 py-10">
-      <div className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-widest" style={{ color: '#0CBF6A' }}>
-          Your Journey
-        </p>
-        <h2 className="mt-1 text-xl font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          4-Month Delivery Plan
-        </h2>
-        <p className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Track every deliverable across your engagement. Green checkmarks are set by your team as work
-          completes.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="Your Journey"
+        title="4-Month Delivery Plan"
+        description="Track every deliverable across your engagement. Green checkmarks are set by your team as work completes."
+      />
 
       <JourneyTimeline
         deliverables={JSON.parse(JSON.stringify(deliverables))}

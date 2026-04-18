@@ -52,8 +52,8 @@ export async function requireAdmin() {
   return { client };
 }
 
-export function getOnboardingRedirect(client: { onboarding_completed?: boolean; onboarding_step?: number }): string {
-  if (client.onboarding_completed) return "/dashboard";
+export function getOnboardingRedirect(client: { status?: string; onboarding_step?: number }): string {
+  if (client.status === "active") return "/dashboard";
   const step = client.onboarding_step || 1;
   const stepNames: Record<number, string> = {
     1: "1-welcome",

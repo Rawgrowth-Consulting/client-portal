@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import PageHeader from '@/components/dashboard/PageHeader';
 
 export default function DashboardHome() {
   const { data: session } = useSession();
@@ -37,13 +38,10 @@ export default function DashboardHome() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-8">
-        <p className="mb-1 text-xs font-medium uppercase tracking-widest text-[#0CBF6A]">Dashboard</p>
-        <h1 className="text-2xl font-medium tracking-tight" style={{ color: 'rgba(255,255,255,0.92)' }}>
-          Welcome back{session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}.
-        </h1>
-      </div>
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Welcome back${session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}.`}
+      />
 
       {/* Top row: Health + Month + Calls */}
       <div className="mb-6 grid gap-4 md:grid-cols-3">
@@ -88,25 +86,6 @@ export default function DashboardHome() {
             <p className="text-sm text-[rgba(255,255,255,0.4)]">No upcoming calls</p>
           )}
         </div>
-      </div>
-
-      {/* Quick Links */}
-      <div className="mb-6 grid gap-3 md:grid-cols-4">
-        {[
-          { href: '/dashboard/brand-profile', label: 'Brand Profile', desc: 'View your profile' },
-          { href: '/dashboard/resources', label: 'Resources', desc: 'Downloads & tools' },
-          { href: '/dashboard/journey', label: 'My Journey', desc: '4-month roadmap' },
-          { href: '/dashboard/settings', label: 'Settings', desc: 'Account settings' },
-        ].map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A1210] p-4 transition-colors hover:border-[rgba(12,191,106,0.2)]"
-          >
-            <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.92)' }}>{link.label}</p>
-            <p className="text-xs text-[rgba(255,255,255,0.35)]">{link.desc}</p>
-          </Link>
-        ))}
       </div>
 
       {/* Activity Feed */}

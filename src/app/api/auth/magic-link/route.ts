@@ -33,15 +33,7 @@ export async function POST(req: NextRequest) {
 
     if (insertErr) throw insertErr;
 
-    // In development, log the login link to the console so we can bypass email
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const loginLink = `${baseUrl}/login/verify?token=${token}`;
 
-    if (process.env.NODE_ENV === "development") {
-      console.log("\n========== MAGIC LOGIN LINK ==========");
-      console.log(loginLink);
-      console.log("=======================================\n");
-    }
 
     // Send email (may fail in dev if domain not verified)
     try {

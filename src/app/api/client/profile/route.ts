@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { convex } from "@/lib/convex-server";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { supabase } from "@/lib/supabase";
 
 export async function GET() {
   try {
     const user = await getAuthUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const client = await convex.query(api.clients.get, {
-      clientId: user.id as Id<"clients">,
-    });
+    const { data: client, error } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ client });
   } catch (err: any) {
@@ -29,10 +31,12 @@ export async function PATCH(req: NextRequest) {
     if (name !== undefined) fields.name = name;
     if (company !== undefined) fields.company = company;
 
-    await convex.mutation(api.clients.update, {
-      clientId: user.id as Id<"clients">,
-      fields,
-    });
+    const { error } = await supabase
+      .from("clients")
+      .update(fields)
+      .eq("id", user.id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

@@ -46,6 +46,40 @@
   border-color: var(--border);
 }
 
+@keyframes rg-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rg-fade-in {
+  animation: rg-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes rg-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.rg-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(12, 191, 106, 0) 0%,
+    rgba(12, 191, 106, 0.14) 50%,
+    rgba(12, 191, 106, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: rg-shimmer 1.6s linear infinite;
+}
+
+@keyframes rg-pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.rg-pulse-dot {
+  animation: rg-pulse-dot 1.2s ease-in-out infinite;
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;

@@ -46,14 +46,8 @@ export async function POST(req: NextRequest) {
     let redirectUrl = "/dashboard";
     if (client.role === "admin") {
       redirectUrl = "/admin";
-    } else if (!client.onboarding_completed) {
-      const step = client.onboarding_step || 1;
-      const steps: Record<number, string> = {
-        1: "1-welcome", 2: "2-questionnaire", 3: "3-brand-profile",
-        4: "4-brand-docs", 5: "5-api-keys", 6: "6-software-access",
-        7: "7-schedule-calls", 8: "8-complete",
-      };
-      redirectUrl = `/onboarding/${steps[step] || "1-welcome"}`;
+    } else if (client.status !== "active") {
+      redirectUrl = "/onboarding";
     }
 
     // Return email so the client can create a next-auth session
