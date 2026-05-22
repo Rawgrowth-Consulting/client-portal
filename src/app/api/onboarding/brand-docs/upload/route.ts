@@ -2,7 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const ALLOWED_TYPES = new Set(["logo", "guideline", "asset", "other"]);
+const ALLOWED_TYPES = new Set([
+  // Brand assets (Pillar C)
+  "logo",
+  "guideline",
+  "asset",
+  // Knowledge assets (Pillar I)
+  "sop",
+  "script",
+  "recording",
+  "other",
+]);
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 const BUCKET = "brand-docs";
 
