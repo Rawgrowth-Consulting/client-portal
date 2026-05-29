@@ -21,9 +21,9 @@ export default async function BrandProfilePage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Brand Profile"
-        title="Your Brand Profile"
-        description="The single source of truth for all AI agents working with your brand."
+        eyebrow="Automation Map"
+        title="Your Business Process & Automation Map"
+        description="The ranked plan of what we automate, the tools we connect, and your 90-day roadmap — generated from your discovery."
       />
 
       <BrandProfileView profile={profile} />

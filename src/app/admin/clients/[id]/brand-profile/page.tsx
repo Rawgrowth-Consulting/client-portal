@@ -140,11 +140,13 @@ function OperationsIntake({ intake }: { intake: Record<string, any> | null }) {
   const people = (intake[C.people] ?? []) as any[];
   const market = intake[C.market] as Record<string, any> | undefined;
   const access = (intake[C.accessInventory] ?? []) as any[];
+  const insights = (intake.additional_context?.insights ?? []) as any[];
 
   const hasOps =
     (snapshot && Object.keys(snapshot).length > 0) ||
     deepDives.length > 0 ||
-    tools.length > 0;
+    tools.length > 0 ||
+    insights.length > 0;
   if (!hasOps) return null;
 
   return (
@@ -161,6 +163,20 @@ function OperationsIntake({ intake }: { intake: Record<string, any> | null }) {
       </p>
 
       <div className="grid gap-4">
+        {insights.length > 0 && (
+          <div className="rounded-xl p-5" style={{ ...panel, borderColor: 'rgba(12,191,106,0.25)' }}>
+            <SectionTitle>Insights spotted live during discovery ({insights.length})</SectionTitle>
+            <div className="grid gap-2">
+              {insights.map((ins, idx) => (
+                <div key={idx} className="text-xs" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  <span className="font-medium" style={{ color: '#0CBF6A' }}>{ins.headline}</span>
+                  {ins.detail ? <span> — {ins.detail}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {snapshot && Object.keys(snapshot).length > 0 && (
           <KVCard title="Company snapshot" data={snapshot} />
         )}

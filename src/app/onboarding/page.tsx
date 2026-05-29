@@ -2,7 +2,8 @@ import Image from "next/image";
 
 import { getAuthUser } from "@/lib/auth";
 import { computeOnboardingProgress } from "@/lib/onboarding";
-import OnboardingChat from "./OnboardingChat";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import OnboardingWorkspace from "./OnboardingWorkspace";
 
 export default async function OnboardingPage() {
   const user = await getAuthUser();
@@ -10,6 +11,10 @@ export default async function OnboardingPage() {
   const initialProgress = user
     ? await computeOnboardingProgress(user.id)
     : { current: 0, total: 14, completed: [] };
+  const { data: clientRow } = user
+    ? await supabaseAdmin.from("clients").select("company").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const company = (clientRow?.company as string | null) ?? null;
 
   return (
     <div className="flex h-full flex-col">
@@ -35,9 +40,9 @@ export default async function OnboardingPage() {
         </div>
       </header>
 
-      {/* Chat */}
+      {/* Chat + live operating map */}
       <div className="min-h-0 flex-1">
-        <OnboardingChat firstName={firstName} initialProgress={initialProgress} />
+        <OnboardingWorkspace firstName={firstName} company={company} initialProgress={initialProgress} />
       </div>
     </div>
   );

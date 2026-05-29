@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowUp, Check, ChevronDown, AlertCircle, Upload, X, FileText, Image as ImageIcon, Paperclip, ArrowRight } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, AlertCircle, Upload, X, FileText, Image as ImageIcon, Paperclip, ArrowRight, Lightbulb } from "lucide-react";
 import Link from "next/link";
 
 import { Response } from "@/components/ui/response";
@@ -31,6 +31,7 @@ type ChatMessage =
       error?: string;
     }
   | { role: "uploader"; id: string; variant: UploaderVariant }
+  | { role: "insight"; id: string; headline: string; detail: string }
   | { role: "portal_button"; id: string };
 
 // If the last message is an empty assistant placeholder, drop it. Used before
@@ -53,11 +54,14 @@ interface Progress {
 interface OnboardingChatProps {
   firstName: string | null;
   initialProgress: Progress;
+  /** Fired whenever the server emits a progress event — used by the live map to refetch. */
+  onProgress?: () => void;
 }
 
 export default function OnboardingChat({
   firstName,
   initialProgress,
+  onProgress,
 }: OnboardingChatProps) {
   const greetingName = firstName?.trim() || "there";
   const initialGreeting = useMemo(
@@ -206,6 +210,7 @@ export default function OnboardingChat({
               completed: event.completed || [],
             });
             if (event.label) setJustSaved(event.label);
+            onProgress?.();
           } else if (event.type === "uploader") {
             const variant: UploaderVariant =
               event.variant === "knowledge" ? "knowledge" : "brand";
@@ -217,6 +222,18 @@ export default function OnboardingChat({
                 id:
                   (globalThis.crypto?.randomUUID?.() as string) ||
                   `uploader_${Date.now()}`,
+              },
+            ]);
+          } else if (event.type === "insight") {
+            setMessages((prev) => [
+              ...stripEmptyAssistant(prev),
+              {
+                role: "insight",
+                headline: event.headline || "",
+                detail: event.detail || "",
+                id:
+                  (globalThis.crypto?.randomUUID?.() as string) ||
+                  `insight_${Date.now()}`,
               },
             ]);
           } else if (event.type === "portal_button") {
@@ -388,6 +405,10 @@ function MessageBubble({
 
   if (message.role === "uploader") {
     return <DocsUploader variant={message.variant} onFinish={onFinishUploader} />;
+  }
+
+  if (message.role === "insight") {
+    return <InsightCard headline={message.headline} detail={message.detail} />;
   }
 
   if (message.role === "portal_button") {
@@ -767,6 +788,35 @@ function DropZone({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function InsightCard({ headline, detail }: { headline: string; detail: string }) {
+  return (
+    <div
+      className="rg-fade-in rounded-xl border p-4"
+      style={{
+        borderColor: "rgba(12,191,106,0.28)",
+        background: "linear-gradient(180deg, rgba(12,191,106,0.08), rgba(12,191,106,0.03))",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[rgba(12,191,106,0.15)]">
+          <Lightbulb className="h-3.5 w-3.5 text-[#0CBF6A]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#0CBF6A]">
+            Spotted for you
+          </p>
+          <p className="text-sm font-medium text-foreground">{headline}</p>
+          {detail && (
+            <p className="mt-1 text-[13px] leading-relaxed text-[rgba(255,255,255,0.72)]">
+              {detail}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
