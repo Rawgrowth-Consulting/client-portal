@@ -109,8 +109,20 @@ REVENUE FUNCTIONS USE THE BOW-TIE FRAME — for marketing, sales, success, reten
 
 WHAT YOU ARE BUILDING TOWARD: a complete operating picture — what they sell and the economics, how every active function runs day to day, the tools behind each, where the time and money leak, what they're driving at, and the rules of engagement. The "YOUR FOCUS NOW" block tells you which area to work and what substance is still required. Treat it as your objective for this stretch of the conversation — NOT a script to read out.
 
+DEPTH GATE — the single most important behaviour (non-negotiable, applies to EVERY section and EVERY row):
+Before you call save_narrative_section, add_repeatable_row, or complete_repeatable_section, you MUST run a synthesize-and-check beat:
+1. **Reflect back** what you've heard in 3–5 concrete bullets — their exact numbers, tool names, steps, owners, volumes. Not paraphrased; specific.
+2. **Name what's still thin** in plain English — "still missing: [specific thing], [specific thing]."
+3. **Ask the client to fill those gaps** before you save. Use the actual gap language ("Walk me through the proposal step concretely — who writes the first draft, how long it takes, what's in your standard structure today.").
+
+Save ONLY once each required field has CONCRETE specifics — a real number, a real name, a real step, a real volume. NOT labels ("we run discovery calls"), NOT generalities ("the team handles it"), NOT polished sound bites. If they give a label, push: "That's the label — walk me through what literally happens, step by step." If they give a generality, push: "Specifically — who, how often, what triggers it, what comes next?"
+
+ONE EXCEPTION: if the client explicitly says "I don't know," "we don't track that," or "we don't have that yet," capture that honestly as a gap and proceed. Don't grind on a real unknown — unknowns are valuable data (they tell us where the install starts from zero). The exception is "I genuinely don't know," not "I'd rather not say it carefully."
+
+You are this client's eyes and ears. They will give you the answer they're used to giving. Your job is to surface the answer they don't realise they have. A thin section silently corrupts the entire automation map — refuse it. The synthesize-and-check beat is also how the client experiences being deeply understood — it's the moment the engagement feels worth $35k.
+
 HARD RULES (non-negotiable):
-- Capture everything by calling the tools — saving is also how the engagement progresses. Save a section or row only once you genuinely have its required substance (real specifics, not placeholders). If a save returns "missing", you haven't fully understood those things yet — keep probing exactly them.
+- Capture everything by calling the tools — but save ONLY after the DEPTH GATE is passed (concrete specifics in every required field, synthesize-and-check beat run with the client). If a save returns "missing", you haven't fully understood those fields — keep probing exactly them. If a save succeeded server-side but a field is only a label, you've FAILED the depth gate even though the flow advanced — reopen that thread next turn and go deeper before moving on.
 - Never re-ask anything already answered — you have the full conversation AND the "WHAT WE'VE LEARNED SO FAR" digest. Use both to stay coherent and build forward.
 - Never fabricate. If they're unsure, help them reason it through.
 - Recommend Wispr Flow once at the very start so they can simply talk their answers.
@@ -140,7 +152,7 @@ const TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "save_narrative_section",
-      description: "Upsert answers for one narrative section. Include only fields the client actually provided; data merges server-side. The flow advances only when all REQUIRED fields are present.",
+      description: "Upsert answers for one narrative section. CALL ONLY AFTER the DEPTH GATE is met for every required field — i.e. concrete specifics (numbers, names, real steps), and a synthesize-and-check beat run with the client. Field-presence is NOT field-depth; do not call this just because you have words for each field. Include only fields the client actually provided; data merges server-side. The flow advances only when all REQUIRED fields are present.",
       parameters: {
         type: "object",
         properties: {
@@ -156,7 +168,7 @@ const TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_repeatable_row",
-      description: "Append ONE row to a repeatable section (a function deep-dive, a tool, a person, or an access item). Call once per row as you capture it.",
+      description: "Append ONE row to a repeatable section (a function deep-dive, a tool, a person, or an access item). CALL ONLY AFTER the DEPTH GATE is met for that row — concrete specifics, not labels. For function deep-dives especially, the row is the spine of the automation map: it must reflect the function's real operation (real steps, named tools, owner, hours/wk, volume, named bottleneck). Run the synthesize-and-check beat with the client before adding the row.",
       parameters: {
         type: "object",
         properties: {
@@ -172,7 +184,7 @@ const TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "complete_repeatable_section",
-      description: "Signal a repeatable section is finished. Validates the hard rule (e.g. every active function has a complete deep-dive). Returns an error listing what's missing if not yet complete.",
+      description: "Signal a repeatable section is finished. CALL ONLY AFTER every row passes the DEPTH GATE (genuinely substantive — not just field-present). Validates the hard rule (e.g. every active function has a complete deep-dive). Returns an error listing what's missing if not yet complete. If field-presence passes but the rows are thin, you've failed the depth gate — keep enriching them before completing.",
       parameters: {
         type: "object",
         properties: { section_id: { type: "string", enum: REPEATABLE_SECTIONS.map((s) => s.id) } },
@@ -623,7 +635,7 @@ function buildNextAction(
       const fnLabel = BUSINESS_FUNCTIONS.find((f) => f.id === nextFn)?.label ?? nextFn;
       return `FOCUS NOW: "${current.label}" — the operational heart of the engagement. ${current.intro} Functions in play: ${active.map((a) => BUSINESS_FUNCTIONS.find((f) => f.id === a)?.label ?? a).join(", ")}. ${
         nextFn
-          ? `Take the "${fnLabel}" function next. Map it like Porter's value chain — walk the work end to end: how it's triggered, each real step, who touches it, where it breaks down, the tools involved, the volume and the time it eats. Use 80/20 to spend your questions on the steps that drive most of the cost/time, and a quick 5-Whys wherever it breaks. Bridge from anything relevant they've already told you. Build a genuine picture (these fields anchor it: ${reqList}; function_id="${nextFn}"), then capture it with add_repeatable_row({section_id:"functionDeepDives", data:{...}}). Probe as much as this function deserves before moving to the next.`
+          ? `Take the "${fnLabel}" function next. Map it like Porter's value chain — walk the work end to end: how it's triggered, each real step, who touches it, where it breaks down, the tools involved, the volume and the time it eats. Use 80/20 to spend your questions on the steps that drive most of the cost/time, and a quick 5-Whys wherever it breaks. Bridge from anything relevant they've already told you. Build a genuine picture (these fields anchor it: ${reqList}; function_id="${nextFn}"). BEFORE you add the row: run the DEPTH GATE — reflect 4–6 concrete bullets back (their numbers, real steps, named tools, owner, hrs/wk, volume, specific bottleneck), name what's still thin, and have them fill it. The row is the spine of the automation map — a thin row corrupts the map. Once it's real, capture it with add_repeatable_row({section_id:"functionDeepDives", data:{...}}). Probe as much as this function deserves before moving to the next.`
           : `Some functions are half-mapped: ${check.incompleteRows.join("; ")}. Probe the missing pieces, then add_repeatable_row again (same function_id) to enrich the picture.`
       } Map one function fully, then move to the next. Don't close this area until every active function is genuinely understood.`;
     }
@@ -720,7 +732,7 @@ function narrativeNextAction(current: any, intake: Record<string, any>): string 
   };
   const cue = frameworkCue[current.id] ?? "";
 
-  return `FOCUS NOW: "${current.label}". What you're trying to understand: ${current.intro} ${captured} The substance this area needs (capture into these fields): ${fieldHelp}. Still required before you can save & move on: ${missing.join(", ") || "(enough to save — do so once you're satisfied you truly understand it)"}. Interview them like a consultant: get concrete specifics, follow the threads that matter, connect to what they've already told you, and probe anything vague.${cue} When you genuinely understand it, call save_narrative_section({section_id:"${current.id}", data:{...}}). The engagement advances only when the required substance is saved.`;
+  return `FOCUS NOW: "${current.label}". What you're trying to understand: ${current.intro} ${captured} The substance this area needs (capture into these fields): ${fieldHelp}. Still required before you can save & move on: ${missing.join(", ") || "(field-presence met — now check DEPTH before saving)"}. Interview them like a consultant: get concrete specifics, follow the threads that matter, connect to what they've already told you, and probe anything vague.${cue} BEFORE SAVING: run the DEPTH GATE — reflect 3–5 concrete bullets back (their numbers, names, real steps), name what's still thin in plain English, and ask them to fill those gaps. Save ONLY when each required field is a concrete specific (number, name, real step), not a label or generality. Then call save_narrative_section({section_id:"${current.id}", data:{...}}).`;
 }
 
 // A compact running digest of what's been captured so far, so the consultant
