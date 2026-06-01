@@ -80,6 +80,24 @@
   animation: rg-pulse-dot 1.2s ease-in-out infinite;
 }
 
+/* Live operating map — node entrance: subtle rise + soft glow, 1-pass. */
+@keyframes rg-map-enter {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.96); filter: brightness(1.15); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+.rg-map-enter { animation: rg-map-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Live operating map — edge draw-in (stroke-dashoffset reveal), 1-pass. */
+@keyframes rg-edge-draw {
+  from { stroke-dashoffset: 240; }
+  to   { stroke-dashoffset: 0; }
+}
+.react-flow__edge.rg-edge-draw .react-flow__edge-path {
+  stroke-dasharray: 240;
+  animation: rg-edge-draw 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;

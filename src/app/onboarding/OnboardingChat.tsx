@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowUp, Check, ChevronDown, AlertCircle, Upload, X, FileText, Image as ImageIcon, Paperclip, ArrowRight } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, AlertCircle, Upload, X, FileText, Image as ImageIcon, Paperclip, ArrowRight, Lightbulb } from "lucide-react";
 import Link from "next/link";
 
 import { Response } from "@/components/ui/response";
 import { Button } from "@/components/ui/button";
-import { BRAND_DOC_ZONES } from "@/lib/onboarding";
+import { BRAND_DOC_ZONES, KNOWLEDGE_DOC_ZONES } from "@/lib/onboarding";
+
+type UploaderVariant = "brand" | "knowledge";
 
 type DocumentRecord = {
   id: string;
@@ -28,7 +30,8 @@ type ChatMessage =
       fields?: Record<string, any>;
       error?: string;
     }
-  | { role: "brand_docs_uploader"; id: string }
+  | { role: "uploader"; id: string; variant: UploaderVariant }
+  | { role: "insight"; id: string; headline: string; detail: string }
   | { role: "portal_button"; id: string };
 
 // If the last message is an empty assistant placeholder, drop it. Used before
@@ -51,16 +54,19 @@ interface Progress {
 interface OnboardingChatProps {
   firstName: string | null;
   initialProgress: Progress;
+  /** Fired whenever the server emits a progress event — used by the live map to refetch. */
+  onProgress?: () => void;
 }
 
 export default function OnboardingChat({
   firstName,
   initialProgress,
+  onProgress,
 }: OnboardingChatProps) {
   const greetingName = firstName?.trim() || "there";
   const initialGreeting = useMemo(
     () =>
-      `Hi ${greetingName}, welcome to the Rawgrowth Onboarding. We're going to ask you a series of questions to understand exactly how we can support your business. Ready to get started?`,
+      `Hi ${greetingName} — welcome to Rawgrowth. I'll guide you through a few sections to map out exactly how your business runs: how you work, the tools you use, your goals, and where the bottlenecks are. The more detail you give on the operational parts, the more we can automate for you. We'll go one step at a time, your answers save as we go, and there's a progress bar up top. Ready to start?`,
     [greetingName]
   );
 
@@ -204,14 +210,30 @@ export default function OnboardingChat({
               completed: event.completed || [],
             });
             if (event.label) setJustSaved(event.label);
-          } else if (event.type === "brand_docs_uploader") {
+            onProgress?.();
+          } else if (event.type === "uploader") {
+            const variant: UploaderVariant =
+              event.variant === "knowledge" ? "knowledge" : "brand";
             setMessages((prev) => [
               ...stripEmptyAssistant(prev),
               {
-                role: "brand_docs_uploader",
+                role: "uploader",
+                variant,
                 id:
                   (globalThis.crypto?.randomUUID?.() as string) ||
                   `uploader_${Date.now()}`,
+              },
+            ]);
+          } else if (event.type === "insight") {
+            setMessages((prev) => [
+              ...stripEmptyAssistant(prev),
+              {
+                role: "insight",
+                headline: event.headline || "",
+                detail: event.detail || "",
+                id:
+                  (globalThis.crypto?.randomUUID?.() as string) ||
+                  `insight_${Date.now()}`,
               },
             ]);
           } else if (event.type === "portal_button") {
@@ -381,8 +403,12 @@ function MessageBubble({
     );
   }
 
-  if (message.role === "brand_docs_uploader") {
-    return <BrandDocsUploader onFinish={onFinishUploader} />;
+  if (message.role === "uploader") {
+    return <DocsUploader variant={message.variant} onFinish={onFinishUploader} />;
+  }
+
+  if (message.role === "insight") {
+    return <InsightCard headline={message.headline} detail={message.detail} />;
   }
 
   if (message.role === "portal_button") {
@@ -502,11 +528,32 @@ function formatValue(v: any): string {
   return JSON.stringify(v);
 }
 
-function BrandDocsUploader({
+const UPLOADER_COPY: Record<
+  UploaderVariant,
+  { title: string; subtitle: string; zones: typeof BRAND_DOC_ZONES | typeof KNOWLEDGE_DOC_ZONES }
+> = {
+  brand: {
+    title: "Upload your brand assets",
+    subtitle: "Logos, brand guidelines, palette, fonts — up to 25 MB each",
+    zones: BRAND_DOC_ZONES,
+  },
+  knowledge: {
+    title: "Upload your playbooks & knowledge",
+    subtitle: "SOPs, scripts, templates, FAQs, call recordings — up to 25 MB each",
+    zones: KNOWLEDGE_DOC_ZONES,
+  },
+};
+
+function DocsUploader({
+  variant,
   onFinish,
 }: {
+  variant: UploaderVariant;
   onFinish: (canned: string) => void;
 }) {
+  const { title, subtitle, zones } = UPLOADER_COPY[variant];
+  const zoneIds = useMemo(() => new Set(zones.map((z) => z.id as string)), [zones]);
+
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [uploadingZone, setUploadingZone] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -515,9 +562,14 @@ function BrandDocsUploader({
   useEffect(() => {
     fetch("/api/onboarding/brand-docs/upload")
       .then((r) => r.json())
-      .then((data) => setDocs(data.documents ?? []))
+      // Only show docs that belong to THIS uploader's zones.
+      .then((data) =>
+        setDocs(
+          (data.documents ?? []).filter((d: DocumentRecord) => zoneIds.has(d.type))
+        )
+      )
       .catch(() => {});
-  }, []);
+  }, [zoneIds]);
 
   async function handleFiles(zoneId: string, files: FileList) {
     if (done) return;
@@ -578,17 +630,13 @@ function BrandDocsUploader({
           <Upload className="h-3.5 w-3.5 text-[#0CBF6A]" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">
-            Upload your brand assets
-          </p>
-          <p className="text-[11px] text-muted-foreground/70">
-            Drag in files or pick them — up to 25 MB each
-          </p>
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-[11px] text-muted-foreground/70">{subtitle}</p>
         </div>
       </div>
 
       <div className="space-y-2.5">
-        {BRAND_DOC_ZONES.map((zone) => {
+        {zones.map((zone) => {
           const zoneDocs = docs.filter((d) => d.type === zone.id);
           return (
             <DropZone
@@ -634,6 +682,13 @@ function BrandDocsUploader({
   );
 }
 
+type UploadZone = {
+  id: string;
+  label: string;
+  accept: string;
+  description: string;
+};
+
 function DropZone({
   zone,
   docs,
@@ -642,7 +697,7 @@ function DropZone({
   onFiles,
   onDelete,
 }: {
-  zone: (typeof BRAND_DOC_ZONES)[number];
+  zone: UploadZone;
   docs: DocumentRecord[];
   uploading: boolean;
   disabled: boolean;
@@ -652,7 +707,12 @@ function DropZone({
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const Icon = zone.id === "logo" ? ImageIcon : zone.id === "guideline" ? FileText : Paperclip;
+  const Icon =
+    zone.id === "logo"
+      ? ImageIcon
+      : zone.id === "guideline" || zone.id === "sop" || zone.id === "script"
+        ? FileText
+        : Paperclip;
 
   return (
     <div
@@ -728,6 +788,35 @@ function DropZone({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+function InsightCard({ headline, detail }: { headline: string; detail: string }) {
+  return (
+    <div
+      className="rg-fade-in rounded-xl border p-4"
+      style={{
+        borderColor: "rgba(12,191,106,0.28)",
+        background: "linear-gradient(180deg, rgba(12,191,106,0.08), rgba(12,191,106,0.03))",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[rgba(12,191,106,0.15)]">
+          <Lightbulb className="h-3.5 w-3.5 text-[#0CBF6A]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#0CBF6A]">
+            Spotted for you
+          </p>
+          <p className="text-sm font-medium text-foreground">{headline}</p>
+          {detail && (
+            <p className="mt-1 text-[13px] leading-relaxed text-[rgba(255,255,255,0.72)]">
+              {detail}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
