@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowUp, Check, ChevronDown, AlertCircle, Upload, X, FileText, Image as ImageIcon, Paperclip, ArrowRight, Lightbulb } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Response } from "@/components/ui/response";
 import { Button } from "@/components/ui/button";
@@ -822,14 +823,18 @@ function InsightCard({ headline, detail }: { headline: string; detail: string })
 }
 
 function PortalButton() {
+  const router = useRouter();
+  useEffect(() => {
+    const t = setTimeout(() => router.push("/dashboard"), 2500);
+    return () => clearTimeout(t);
+  }, [router]);
   return (
     <div className="rg-fade-in rounded-xl border border-[rgba(12,191,106,0.18)] bg-[rgba(12,191,106,0.04)] p-5 text-center">
       <p className="mb-1 text-sm font-medium text-foreground">
         You're all set 🎉
       </p>
       <p className="mb-4 text-xs text-muted-foreground/80">
-        Your AI department is standing up now. Head into your portal to watch
-        the first deliverables land.
+        Your AI department is standing up now. Redirecting to your portal.
       </p>
       <Button asChild size="lg" className="w-full sm:w-auto">
         <Link href="/dashboard" className="inline-flex items-center gap-2">
