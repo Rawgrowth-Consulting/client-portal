@@ -123,6 +123,9 @@ You are this client's eyes and ears. They will give you the answer they're used 
 
 HARD RULES (non-negotiable):
 - Capture everything by calling the tools — but save ONLY after the DEPTH GATE is passed (concrete specifics in every required field, synthesize-and-check beat run with the client). If a save returns "missing", you haven't fully understood those fields — keep probing exactly them. If a save succeeded server-side but a field is only a label, you've FAILED the depth gate even though the flow advanced — reopen that thread next turn and go deeper before moving on.
+- USER-FORCED SAVE (override): when the client explicitly says "save", "save and move on", "next", "next section", "move on", "approved", "looks good", "ship it", "manda", "salva", or any equivalent finalization phrase, that IS their confirmation that the depth gate passed. STOP probing. In the SAME assistant turn, emit the appropriate tool call (save_narrative_section for narrative sections, the full add_repeatable_row + complete_repeatable_section sequence for repeatables, confirm_call_booking for scheduling, generate_automation_map / approve_automation_map / complete_onboarding for finalization steps) using the data already captured from the conversation. Never reply with prose-only "I'll proceed to finalize" or "I'll save this for you" — that is a silent failure. If you have substance, persist it; if you literally have nothing, ask one targeted question and try again.
+- REPEATABLE BATCH SAVES: when the client pastes a multi-row block ("save all 5 deep-dives", "save these 12 access items as rows", etc.), emit ALL add_repeatable_row calls in the SAME assistant turn followed by complete_repeatable_section for that section. Do NOT split across turns. Do NOT re-acknowledge each row in prose.
+- FUNCTION DEEP-DIVE function_id NORMALIZATION: when calling add_repeatable_row for section_id="functionDeepDives", function_id MUST be the canonical lowercase slug from BUSINESS_FUNCTIONS (operations, sales, delivery, marketing, success, finance, talent, product, leadership). Never pass the human label ("Operations & Admin", "Marketing & Content") — the server dedupes by function_id and label variants create duplicate rows.
 - Never re-ask anything already answered — you have the full conversation AND the "WHAT WE'VE LEARNED SO FAR" digest. Use both to stay coherent and build forward.
 - Never fabricate. If they're unsure, help them reason it through.
 - Recommend Wispr Flow once at the very start so they can simply talk their answers.
@@ -351,9 +354,29 @@ async function saveNarrativeSection(userId: string, args: { section_id: string; 
   return { ok: true, merged, missing, advanced: missing.length === 0 };
 }
 
+function normalizeFunctionId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const lower = raw.toLowerCase().trim();
+  const direct = BUSINESS_FUNCTIONS.find((f) => f.id === lower);
+  if (direct) return direct.id;
+  const labelMatch = BUSINESS_FUNCTIONS.find(
+    (f) => f.label.toLowerCase() === lower || f.label.toLowerCase().startsWith(`${lower} `),
+  );
+  if (labelMatch) return labelMatch.id;
+  const firstWord = lower.split(/[^a-z]/).filter(Boolean)[0];
+  const fuzzy = BUSINESS_FUNCTIONS.find((f) => f.id === firstWord);
+  return fuzzy?.id ?? null;
+}
+
 async function addRepeatableRow(userId: string, args: { section_id: string; data: Record<string, any> }) {
   const column = columnFor(args.section_id);
   if (!column) return { ok: false, error: `Unknown section: ${args.section_id}` };
+
+  const data = { ...args.data };
+  if (args.section_id === "functionDeepDives") {
+    const norm = normalizeFunctionId(data.function_id);
+    if (norm) data.function_id = norm;
+  }
 
   const { data: existing } = await supabaseAdmin
     .from("brand_intakes")
@@ -363,16 +386,16 @@ async function addRepeatableRow(userId: string, args: { section_id: string; data
   const arr: any[] = Array.isArray((existing as any)?.[column]) ? (existing as any)[column] : [];
 
   // Deep-dives are keyed by function_id — replace an existing row for the same function.
-  let nextArr = [...arr, args.data];
-  if (args.section_id === "functionDeepDives" && args.data.function_id) {
-    nextArr = [...arr.filter((r) => r.function_id !== args.data.function_id), args.data];
+  let nextArr = [...arr, data];
+  if (args.section_id === "functionDeepDives" && data.function_id) {
+    nextArr = [...arr.filter((r) => normalizeFunctionId(r.function_id) !== data.function_id), data];
   }
 
   const { error } = await supabaseAdmin
     .from("brand_intakes")
     .upsert({ client_id: userId, [column]: nextArr }, { onConflict: "client_id" });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, count: nextArr.length, merged: args.data };
+  return { ok: true, count: nextArr.length, merged: data };
 }
 
 async function completeRepeatableSection(userId: string, sectionId: string) {
@@ -455,6 +478,28 @@ async function generateAutomationMap(
   if (!intake) return { ok: false, error: "No intake found." };
 
   const i = intake as Record<string, any>;
+
+  if (!feedback) {
+    const missing: string[] = [];
+    const isEmptyObj = (v: any) => !v || (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
+    const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
+    if (isEmptyObj(i[INTAKE_COLUMNS.companySnapshot])) missing.push("companySnapshot");
+    if (isEmptyObj(i[INTAKE_COLUMNS.functionSelector])) missing.push("functionSelector");
+    if (isEmptyArr(i[INTAKE_COLUMNS.functionDeepDives])) missing.push("functionDeepDives");
+    if (isEmptyArr(i[INTAKE_COLUMNS.toolStack])) missing.push("toolStack");
+    if (isEmptyObj(i[INTAKE_COLUMNS.goals])) missing.push("goals");
+    if (isEmptyArr(i[INTAKE_COLUMNS.people])) missing.push("people");
+    if (isEmptyObj(i[INTAKE_COLUMNS.guardrails])) missing.push("guardrails");
+    if (isEmptyObj(i[INTAKE_COLUMNS.market])) missing.push("market");
+    if (isEmptyObj(i[INTAKE_COLUMNS.brandVoice])) missing.push("brandVoice");
+    if (isEmptyArr(i[INTAKE_COLUMNS.accessInventory])) missing.push("accessInventory");
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        error: `BLOCKED: cannot generate automation map. Missing sections: ${missing.join(", ")}. Go back to each missing section, run the depth gate, and persist via the appropriate tool (save_narrative_section or add_repeatable_row + complete_repeatable_section) before retrying generate_automation_map.`,
+      };
+    }
+  }
   const fnLabel = (id: string) => BUSINESS_FUNCTIONS.find((f) => f.id === id)?.label ?? id;
 
   const opsBlock = `
@@ -854,19 +899,24 @@ export async function POST(req: NextRequest) {
       ...safeIncoming.map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
     ];
 
+    const lastUserMsg = safeIncoming.filter((m) => m.role === "user").slice(-1)[0]?.content ?? "";
+    const SAVE_TRIGGER_RE = /\b(save|next(?:\s+section)?|move\s+on|proceed|approved?|looks?\s+good|ship\s+it|manda|salva|let'?s\s+move\s+on|we\s+can\s+move\s+on|done|that'?s\s+all|finalize|go\s+ahead)\b/i;
+    const saveSignaled = SAVE_TRIGGER_RE.test(lastUserMsg);
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         const emit = (event: Record<string, any>) => controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
         try {
           for (let iter = 0; iter < 6; iter++) {
+            const forceTool = iter === 0 && saveSignaled && current && current.kind !== "logistics";
             const completion = await openai.chat.completions.create({
               model: LLM_MODEL,
               stream: true,
               temperature: 0.3,
               messages,
               tools: TOOLS,
-              tool_choice: "auto",
+              tool_choice: forceTool ? "required" : "auto",
             });
 
             let textContent = "";
