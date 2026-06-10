@@ -98,6 +98,10 @@ export const FUNCTION_DEEPDIVE_FIELDS: FieldDef[] = [
   { key: "quality_bar", label: "What 'great' looks like vs. 'unacceptable'", required: false },
   { key: "pain", label: "What's most repetitive, boring, or error-prone here", required: true },
   { key: "existing_sop", label: "Any existing SOP/script/template (link or 'none')", required: false },
+  { key: "sales_scripts", label: "[Sales] Scripts / talk tracks you use (paste or link)", required: false },
+  { key: "call_recordings_ref", label: "[Sales] Where call recordings live (link or 'none')", required: false },
+  { key: "proposal_process", label: "[Sales] How proposals/quotes get built and sent", required: false },
+  { key: "follow_up_process", label: "[Sales] Your follow-up cadence after a call/proposal", required: false },
 ];
 
 /** One Tool Inventory row. (Pillar E — the Composio connection source) */
@@ -224,6 +228,8 @@ export const SECTIONS: OnboardingSection[] = [
       { key: "no_gos", label: "Hard no-gos (claims you can't make, regulated language, off-limits topics)", required: true },
       { key: "data_sensitivity", label: "What must never leave the company / never be sent externally", required: true },
       { key: "escalation", label: "When should an agent stop and ask a human?", required: true },
+      { key: "approval_boundaries", label: "Where exactly is the line between act-on-your-own and needs-approval (dollar amounts, customer-facing sends, etc.)", required: false },
+      { key: "agents_never_touch", label: "Anything agents should never touch (systems, accounts, decisions)", required: false },
     ],
   },
   {
@@ -238,6 +244,12 @@ export const SECTIONS: OnboardingSection[] = [
       { key: "objections", label: "The main objection(s) you hear", required: true },
       { key: "competitors", label: "Main competitors + how you're different", required: true },
       { key: "positioning", label: "Your positioning / category", required: false },
+      { key: "best_customers", label: "Your best customers — who they are and why they're a great fit", required: false },
+      { key: "worst_customers", label: "Your worst-fit customers — who you'd rather not take on", required: false },
+      { key: "trigger_events", label: "What triggers someone to start looking for you (the buying trigger)", required: false },
+      { key: "current_alternatives", label: "What they use / do today instead of you", required: false },
+      { key: "why_buy", label: "Why customers ultimately buy from you", required: false },
+      { key: "why_not_buy", label: "Why prospects don't buy / walk away", required: false },
     ],
   },
   {
@@ -252,6 +264,8 @@ export const SECTIONS: OnboardingSection[] = [
       { key: "never_say", label: "Words/phrases to never use", required: true },
       { key: "signature_phrases", label: "Signature phrases / things you always say", required: false },
       { key: "messaging_pillars", label: "Core messaging pillars / hot takes", required: false },
+      { key: "examples_good_copy", label: "Examples of copy that sounds right (paste 1-2 samples or links)", required: false },
+      { key: "examples_bad_copy", label: "Examples of copy that sounds wrong / off-brand", required: false },
     ],
   },
   {
