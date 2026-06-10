@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, getEffectiveUser } from '@/lib/auth';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 import AdminShell from './AdminShell';
 
 export default async function AdminLayout({
@@ -11,9 +12,14 @@ export default async function AdminLayout({
   if (!user) redirect('/login');
   if (user.role !== 'admin') redirect('/dashboard');
 
+  const eff = await getEffectiveUser();
+
   return (
-    <AdminShell user={{ name: user.name, email: user.email }}>
-      {children}
-    </AdminShell>
+    <>
+      {eff?.impersonating && <ImpersonationBanner targetName={eff.effective.name} />}
+      <AdminShell user={{ name: user.name, email: user.email }}>
+        {children}
+      </AdminShell>
+    </>
   );
 }

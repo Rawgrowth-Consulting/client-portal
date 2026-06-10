@@ -1,8 +1,11 @@
 import { auth } from "./auth-config";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { getActiveImpersonationSession, type ImpersonationSession } from "@/lib/impersonation";
 import { redirect } from "next/navigation";
 
-export async function getAuthUser(): Promise<{ id: string; email: string; name: string; role: string } | null> {
+type AuthUser = { id: string; email: string; name: string; role: string };
+
+export async function getAuthUser(): Promise<AuthUser | null> {
   const session = await auth();
   if (!session?.user) return null;
   return {
@@ -13,19 +16,54 @@ export async function getAuthUser(): Promise<{ id: string; email: string; name: 
   };
 }
 
+// Resolves the principal the app should act as. `actual` is always the logged-in
+// user; `effective` is the impersonated client when an admin has an active
+// impersonation session, otherwise it equals `actual`.
+export async function getEffectiveUser(): Promise<
+  { actual: AuthUser; effective: AuthUser; impersonating: ImpersonationSession | null } | null
+> {
+  const actual = await getAuthUser();
+  if (!actual) return null;
+
+  if (actual.role === "admin") {
+    const session = await getActiveImpersonationSession();
+    if (session) {
+      const { data: target } = await supabase
+        .from("clients")
+        .select("id, email, name, role")
+        .eq("id", session.client_id)
+        .maybeSingle();
+      if (target) {
+        return {
+          actual,
+          effective: {
+            id: target.id,
+            email: target.email,
+            name: target.name,
+            role: target.role,
+          },
+          impersonating: session,
+        };
+      }
+    }
+  }
+
+  return { actual, effective: actual, impersonating: null };
+}
+
 export async function getAuthenticatedClient() {
   try {
-    const user = await getAuthUser();
-    if (!user) return null;
+    const eff = await getEffectiveUser();
+    if (!eff) return null;
 
     const { data: client } = await supabase
       .from("clients")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", eff.effective.id)
       .single();
 
     if (!client) return null;
-    return { client };
+    return { client, impersonating: eff.impersonating, actual: eff.actual };
   } catch {
     return null;
   }

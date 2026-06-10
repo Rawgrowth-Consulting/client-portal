@@ -53,6 +53,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const isPublic = publicRoutes.some((route) => pathname.startsWith(route));
       if (isPublic) return true;
 
+      // Impersonation mutation endpoints enforce their own auth/role and return
+      // precise status codes (401/403/400). Defer to the handler instead of
+      // redirecting, so non-admins get 403 rather than a 302 bounce.
+      const isImpersonationApi =
+        pathname.endsWith("/impersonate") || pathname === "/admin/impersonation/exit";
+      if (isImpersonationApi) return true;
+
       const isAdminArea = pathname.startsWith("/admin");
       const isClientArea =
         pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding");
@@ -69,8 +76,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return Response.redirect(new URL("/dashboard", origin));
       }
 
+      // Admin enters client area only while impersonating. getEffectiveUser
+      // revalidates the row and bounces a stale cookie back to /admin.
       if (isClientArea && role === "admin") {
-        return Response.redirect(new URL("/admin", origin));
+        if (!request.cookies.has("imp_session_id")) {
+          return Response.redirect(new URL("/admin", origin));
+        }
       }
 
       return true;

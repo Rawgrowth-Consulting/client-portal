@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getAuthUser } from '@/lib/auth';
+import { getEffectiveUser } from '@/lib/auth';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 import DashboardShell from './DashboardShell';
 
 export default async function DashboardLayout({
@@ -7,9 +8,16 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getAuthUser();
-  if (!user) redirect('/login');
-  if (user.role === 'admin') redirect('/admin');
+  const eff = await getEffectiveUser();
+  if (!eff) redirect('/login');
+  // A real admin (not impersonating) belongs in /admin. An impersonating admin
+  // resolves to the target client, so this guard lets them through.
+  if (eff.effective.role === 'admin' && !eff.impersonating) redirect('/admin');
 
-  return <DashboardShell>{children}</DashboardShell>;
+  return (
+    <>
+      {eff.impersonating && <ImpersonationBanner targetName={eff.effective.name} />}
+      <DashboardShell>{children}</DashboardShell>
+    </>
+  );
 }

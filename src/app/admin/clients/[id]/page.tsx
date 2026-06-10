@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import Link from 'next/link';
+import ImpersonateButton from '@/components/ImpersonateButton';
 import { ClientDetailInteractive } from './client-detail-interactive';
 
 const STEP_NAMES: Record<number, string> = {
@@ -99,6 +100,7 @@ export default async function ClientDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <ImpersonateButton clientId={id} />
           {brandProfile && (
             <Link
               href={`/admin/clients/${id}/brand-profile`}

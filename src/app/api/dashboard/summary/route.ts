@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { getAuthUser } from "@/lib/auth";
+import { getEffectiveUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // Server-side dashboard data. Auth is enforced via NextAuth session; reads run
-// with the service role and are scoped to the caller's own client id. This keeps
-// the Supabase secret key server-only — the browser never queries the DB directly.
+// with the service role and are scoped to the effective client id (the
+// impersonated client when an admin is impersonating). This keeps the Supabase
+// secret key server-only — the browser never queries the DB directly.
 export async function GET() {
-  const user = await getAuthUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const eff = await getEffectiveUser();
+  if (!eff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const clientId = user.id;
+  const clientId = eff.effective.id;
   const [clientRes, callsRes, activityRes, brandProfileRes, accessRes, typedDocsRes] =
     await Promise.all([
       supabaseAdmin.from("clients").select("*").eq("id", clientId).maybeSingle(),
