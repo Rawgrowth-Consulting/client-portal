@@ -1,5 +1,5 @@
 import { auth } from "./auth-config";
-import { supabase } from "./supabase";
+import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { redirect } from "next/navigation";
 
 export async function getAuthUser(): Promise<{ id: string; email: string; name: string; role: string } | null> {

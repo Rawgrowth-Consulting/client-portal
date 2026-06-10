@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { supabase } from "./supabase";
+import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [

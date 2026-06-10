@@ -1,6 +1,6 @@
 import BrandProfileView from '@/components/dashboard/BrandProfileView';
 import { getAuthUser } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import PageHeader from '@/components/dashboard/PageHeader';
 
 export default async function BrandProfilePage() {

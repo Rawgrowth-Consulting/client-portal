@@ -2,30 +2,31 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import PageHeader from '@/components/dashboard/PageHeader';
-import SetupChecklist from '@/components/dashboard/SetupChecklist';
+import SetupChecklist, { type SetupChecklistData } from '@/components/dashboard/SetupChecklist';
 
 export default function DashboardHome() {
   const { data: session } = useSession();
   const [client, setClient] = useState<any>(null);
   const [calls, setCalls] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
+  const [checklist, setChecklist] = useState<SetupChecklistData | null>(null);
 
   useEffect(() => {
     if (!session?.user?.id) return;
 
     async function fetchData() {
-      const [clientRes, callsRes, activityRes] = await Promise.all([
-        supabase.from('clients').select('*').eq('id', session!.user.id).single(),
-        supabase.from('scheduled_calls').select('*').eq('client_id', session!.user.id).order('scheduled_at', { ascending: true }),
-        supabase.from('activity_feed').select('*').eq('client_id', session!.user.id).order('created_at', { ascending: false }).limit(5),
-      ]);
+      // All DB access is server-side (/api/dashboard/summary enforces the session
+      // and uses the service role). The browser never holds a privileged key.
+      const res = await fetch('/api/dashboard/summary');
+      if (!res.ok) return;
+      const data = await res.json();
 
-      if (clientRes.data) setClient(clientRes.data);
-      if (callsRes.data) setCalls(callsRes.data);
-      if (activityRes.data) setActivity(activityRes.data);
+      if (data.client) setClient(data.client);
+      if (data.calls) setCalls(data.calls);
+      if (data.activity) setActivity(data.activity);
+      setChecklist({ client: data.client, ...data.checklist });
     }
 
     fetchData();
@@ -91,7 +92,7 @@ export default function DashboardHome() {
 
       {/* Setup Checklist */}
       <div className="mb-6">
-        <SetupChecklist clientId={session?.user?.id} />
+        <SetupChecklist data={checklist} />
       </div>
 
       {/* Activity Feed */}

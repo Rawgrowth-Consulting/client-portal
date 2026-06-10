@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import Link from 'next/link';
 import { BrandProfileEditor } from './brand-profile-editor';
 import {
