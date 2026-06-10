@@ -27,17 +27,20 @@ export default function SetupChecklist({ clientId }: { clientId: string | undefi
       ]);
 
       // Gracefully attempt client_profile_documents (F-001 may not be shipped yet).
+      // Supabase JS returns {data, error} — does NOT throw on missing table — so we
+      // check error.code explicitly rather than relying on try/catch.
       let typedDocsCount = 0;
       let approvedTypedDocsCount = 0;
-      try {
-        const typed = await supabase.from('client_profile_documents').select('id,approved_at').eq('client_id', clientId);
-        if (typed.data) {
-          typedDocsCount = typed.data.length;
-          approvedTypedDocsCount = typed.data.filter((d: any) => d.approved_at).length;
-        }
-      } catch {
-        // Table doesn't exist yet (pre-F-001). Fall back to brand_profiles.
+      const typed = await supabase
+        .from('client_profile_documents')
+        .select('id,approved_at')
+        .eq('client_id', clientId);
+      if (typed.data && !typed.error) {
+        typedDocsCount = typed.data.length;
+        approvedTypedDocsCount = typed.data.filter((d: any) => d.approved_at).length;
       }
+      // If typed.error fires (table missing pre-F-001 or RLS denial), we silently
+      // fall back to brand_profiles below.
 
       const client = clientRes.data ?? {};
       const brandProfiles = brandProfileRes.data ?? [];
