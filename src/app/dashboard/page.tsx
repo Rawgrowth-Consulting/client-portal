@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import PageHeader from '@/components/dashboard/PageHeader';
+import SetupChecklist from '@/components/dashboard/SetupChecklist';
 
 export default function DashboardHome() {
   const { data: session } = useSession();
@@ -86,6 +87,11 @@ export default function DashboardHome() {
             <p className="text-sm text-[rgba(255,255,255,0.4)]">No upcoming calls</p>
           )}
         </div>
+      </div>
+
+      {/* Setup Checklist */}
+      <div className="mb-6">
+        <SetupChecklist clientId={session?.user?.id} />
       </div>
 
       {/* Activity Feed */}

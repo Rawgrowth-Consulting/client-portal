@@ -37,9 +37,21 @@ const USE_OPENROUTER = !process.env.OPENAI_API_KEY && !!process.env.OPENROUTER_A
 const LLM_MODEL =
   process.env.ONBOARDING_MODEL ||
   (USE_OPENROUTER ? "anthropic/claude-opus-4.7" : "gpt-4o");
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY,
-  ...(USE_OPENROUTER ? { baseURL: "https://openrouter.ai/api/v1" } : {}),
+let _openai: OpenAI | null = null;
+function getOpenai(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || "missing-key",
+      ...(USE_OPENROUTER ? { baseURL: "https://openrouter.ai/api/v1" } : {}),
+    });
+  }
+  return _openai;
+}
+const openai: OpenAI = new Proxy({} as OpenAI, {
+  get(_t, prop) {
+    const client = getOpenai() as unknown as Record<string, unknown>;
+    return client[prop as string];
+  },
 });
 const LLM_KEY_PRESENT = !!(process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY);
 
