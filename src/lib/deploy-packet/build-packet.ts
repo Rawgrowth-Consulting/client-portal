@@ -12,9 +12,11 @@ export type PacketResult =
 export async function buildPacket(clientId: string): Promise<PacketResult> {
   const warnings: string[] = [];
 
+  // Select * so the query works whether or not the optional deployment_status
+  // column has been added to clients yet.
   const { data: client } = await supabaseAdmin
     .from("clients")
-    .select("id, name, company, email, status, deployment_status, created_at")
+    .select("*")
     .eq("id", clientId)
     .maybeSingle();
   if (!client) return { ok: false, status: 404, body: { error: "client not found" } };

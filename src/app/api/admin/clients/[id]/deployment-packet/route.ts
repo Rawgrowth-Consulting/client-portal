@@ -25,11 +25,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const packet: Record<string, any> = { ...result.packet, generated_at: new Date().toISOString() };
 
-  // FC-02: mark deployment_status packet_ready + best-effort audit row.
-  await supabaseAdmin
+  // FC-02: mark deployment_status packet_ready (best-effort — the column is
+  // optional until its migration lands) + best-effort audit row.
+  const flip = await supabaseAdmin
     .from("clients")
     .update({ deployment_status: "packet_ready" })
     .eq("id", clientId);
+  if (flip.error) packet.warnings.push("deployment_status not persisted (column missing)");
   try {
     await supabaseAdmin.from("hq_audit_log").insert({
       action: "deployment_packet_generated",
