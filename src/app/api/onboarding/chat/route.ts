@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { runProfileDocsForClient } from "@/lib/docs/generate-all";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -135,14 +136,14 @@ You are this client's eyes and ears. They will give you the answer they're used 
 
 HARD RULES (non-negotiable):
 - Capture everything by calling the tools — but save ONLY after the DEPTH GATE is passed (concrete specifics in every required field, synthesize-and-check beat run with the client). If a save returns "missing", you haven't fully understood those fields — keep probing exactly them. If a save succeeded server-side but a field is only a label, you've FAILED the depth gate even though the flow advanced — reopen that thread next turn and go deeper before moving on.
-- USER-FORCED SAVE (override): when the client explicitly says "save", "save and move on", "next", "next section", "move on", "approved", "looks good", "ship it", "manda", "salva", or any equivalent finalization phrase, that IS their confirmation that the depth gate passed. STOP probing. In the SAME assistant turn, emit the appropriate tool call (save_narrative_section for narrative sections, the full add_repeatable_row + complete_repeatable_section sequence for repeatables, confirm_call_booking for scheduling, generate_automation_map / approve_automation_map / complete_onboarding for finalization steps) using the data already captured from the conversation. Never reply with prose-only "I'll proceed to finalize" or "I'll save this for you" — that is a silent failure. If you have substance, persist it; if you literally have nothing, ask one targeted question and try again.
+- USER-FORCED SAVE (override): when the client explicitly says "save", "save and move on", "next", "next section", "move on", "approved", "looks good", "ship it", "manda", "salva", or any equivalent finalization phrase, that IS their confirmation that the depth gate passed. STOP probing. In the SAME assistant turn, emit the appropriate tool call (save_narrative_section for narrative sections, the full add_repeatable_row + complete_repeatable_section sequence for repeatables, confirm_call_booking for scheduling, generate_profile_documents / complete_onboarding for finalization steps) using the data already captured from the conversation. Never reply with prose-only "I'll proceed to finalize" or "I'll save this for you" — that is a silent failure. If you have substance, persist it; if you literally have nothing, ask one targeted question and try again.
 - REPEATABLE BATCH SAVES: when the client pastes a multi-row block ("save all 5 deep-dives", "save these 12 access items as rows", etc.), emit ALL add_repeatable_row calls in the SAME assistant turn followed by complete_repeatable_section for that section. Do NOT split across turns. Do NOT re-acknowledge each row in prose.
 - FUNCTION DEEP-DIVE function_id NORMALIZATION: when calling add_repeatable_row for section_id="functionDeepDives", function_id MUST be the canonical lowercase slug from BUSINESS_FUNCTIONS (operations, sales, delivery, marketing, success, finance, talent, product, leadership). Never pass the human label ("Operations & Admin", "Marketing & Content") — the server dedupes by function_id and label variants create duplicate rows.
 - Never re-ask anything already answered — you have the full conversation AND the "WHAT WE'VE LEARNED SO FAR" digest. Use both to stay coherent and build forward.
 - Never fabricate. If they're unsure, help them reason it through.
 - Recommend Wispr Flow once at the very start so they can simply talk their answers.
 
-Persistence tools: save_narrative_section · add_repeatable_row + complete_repeatable_section · show_uploader + complete_uploader_section · confirm_call_booking + complete_schedule_calls_section · generate_automation_map + approve_automation_map · complete_onboarding · complete_section_1.`;
+Persistence tools: save_narrative_section · add_repeatable_row + complete_repeatable_section · show_uploader + complete_uploader_section · confirm_call_booking + complete_schedule_calls_section · generate_profile_documents · complete_onboarding · complete_section_1.`;
 
 const TOOLS: ChatCompletionTool[] = [
   {
@@ -262,22 +263,14 @@ const TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "generate_automation_map",
-      description: "Generate (or regenerate) the client's Business Process & Automation Map from their operations data. The rendered markdown streams into the chat automatically — never repeat its content.",
+      name: "generate_profile_documents",
+      description: "Generate the client's 10 profile documents (brand, offer, ICP, voice, content/funnel/sales strategy, agent context, tool checklist, approval rules) from their onboarding data. Returns a summary — the documents are then reviewed and approved by the Rawgrowth team. Never repeat document content in chat. Pass feedback:null.",
       parameters: {
         type: "object",
         properties: { feedback: { type: ["string", "null"] } },
         required: ["feedback"],
         additionalProperties: false,
       },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "approve_automation_map",
-      description: "Call when the client approves the latest automation map.",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
   {
@@ -477,158 +470,6 @@ async function completeScheduleCallsSection(userId: string) {
   return { ok: true };
 }
 
-async function generateAutomationMap(
-  userId: string,
-  feedback: string | null,
-  onChunk?: (delta: string) => void
-): Promise<{ ok: true; content: string; version: number } | { ok: false; error: string }> {
-  const { data: intake } = await supabaseAdmin
-    .from("brand_intakes")
-    .select("*")
-    .eq("client_id", userId)
-    .maybeSingle();
-  if (!intake) return { ok: false, error: "No intake found." };
-
-  const i = intake as Record<string, any>;
-
-  if (!feedback) {
-    const missing: string[] = [];
-    const isEmptyObj = (v: any) => !v || (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
-    const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
-    if (isEmptyObj(i[INTAKE_COLUMNS.companySnapshot])) missing.push("companySnapshot");
-    if (isEmptyObj(i[INTAKE_COLUMNS.functionSelector])) missing.push("functionSelector");
-    if (isEmptyArr(i[INTAKE_COLUMNS.functionDeepDives])) missing.push("functionDeepDives");
-    if (isEmptyArr(i[INTAKE_COLUMNS.toolStack])) missing.push("toolStack");
-    if (isEmptyObj(i[INTAKE_COLUMNS.goals])) missing.push("goals");
-    if (isEmptyArr(i[INTAKE_COLUMNS.people])) missing.push("people");
-    if (isEmptyObj(i[INTAKE_COLUMNS.guardrails])) missing.push("guardrails");
-    if (isEmptyObj(i[INTAKE_COLUMNS.market])) missing.push("market");
-    if (isEmptyObj(i[INTAKE_COLUMNS.brandVoice])) missing.push("brandVoice");
-    if (isEmptyArr(i[INTAKE_COLUMNS.accessInventory])) missing.push("accessInventory");
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        error: `BLOCKED: cannot generate automation map. Missing sections: ${missing.join(", ")}. Go back to each missing section, run the depth gate, and persist via the appropriate tool (save_narrative_section or add_repeatable_row + complete_repeatable_section) before retrying generate_automation_map.`,
-      };
-    }
-  }
-  const fnLabel = (id: string) => BUSINESS_FUNCTIONS.find((f) => f.id === id)?.label ?? id;
-
-  const opsBlock = `
-COMPANY SNAPSHOT: ${JSON.stringify(i[INTAKE_COLUMNS.companySnapshot] ?? {})}
-ACTIVE FUNCTIONS / TIME DRAINS: ${JSON.stringify(i[INTAKE_COLUMNS.functionSelector] ?? {})}
-FUNCTION DEEP-DIVES (each = a candidate automation): ${JSON.stringify(i[INTAKE_COLUMNS.functionDeepDives] ?? [])}
-TOOL STACK (Composio connection source): ${JSON.stringify(i[INTAKE_COLUMNS.toolStack] ?? [])}
-GOALS & BOTTLENECKS: ${JSON.stringify(i[INTAKE_COLUMNS.goals] ?? {})}
-PEOPLE / APPROVALS: ${JSON.stringify(i[INTAKE_COLUMNS.people] ?? [])}
-GUARDRAILS: ${JSON.stringify(i[INTAKE_COLUMNS.guardrails] ?? {})}
-MARKET / CUSTOMER: ${JSON.stringify(i[INTAKE_COLUMNS.market] ?? {})}
-BRAND VOICE (supporting context only): ${JSON.stringify(i[INTAKE_COLUMNS.brandVoice] ?? {})}
-INSIGHTS SPOTTED LIVE DURING DISCOVERY (incorporate these): ${JSON.stringify(i.additional_context?.insights ?? [])}
-`;
-
-  const feedbackBlock = feedback
-    ? `\n\n## Client feedback to incorporate\n${feedback}\nRewrite taking this into account.`
-    : "";
-
-  const prompt = `You are a business-operations analyst producing a **Business Process & Automation Map** for an internal Rawgrowth team. The reader is the COO deciding what to automate via Composio. This is NOT a brand essay — it is an operations and automation plan. Be concrete and specific to THIS company's data.
-
-Output markdown with these H2 sections:
-
-## Operation at a glance
-- One-liner, stage, headcount, the active functions.
-- The full tool stack grouped by category (what data each holds, read/write intent).
-- Top 3 business-wide bottlenecks and the stated goal / where they want to be.
-
-## Business Process & Automation Map
-A markdown table, ONE ROW PER PROCESS (from the function deep-dives), columns:
-| Process | How it runs today | Owner · hrs/wk · volume | Tools it touches | Bottleneck / pain | Automation opportunity (what an agent would do + which named tools/Composio connectors it needs) | Read/Write scope | Autonomy (draft vs auto) |
-RANK rows by leverage (hours/week × frequency × pain) — highest-value automations first. This ordering is the build sequence.
-
-## Composio connection checklist
-A bullet list of every tool referenced by any automation above, each tagged: must-have-v1 / later, and read / write / both.
-
-## Asset readiness check
-For each automation in the map, note whether the underlying assets (SOP / script / template / content library / example outputs) EXIST today. Three-tier:
-- ✅ Ready — asset exists and is usable
-- 🟡 Drafted / in-heads — partial; we can extract and formalise during install
-- 🔴 Missing — needs to be built before the agent can run
-Pull this from each deep-dive's existing_sop field. This tells us where the install hits the ground running vs. where we have authoring work first.
-
-## 90-Day Action Roadmap
-Three buckets, ordered by leverage × asset readiness. UNDERPROMISE — set a realistic journey, not an aspirational one. The right expectations on Day 1 prevent disappointment on Day 7.
-- **Do First (Days 1–30):** the automations with highest leverage AND ✅ asset readiness — these ship fastest. Realistic launch window: 2–3 weeks per agent, not "by Friday."
-- **Do Next (Days 31–60):** high-leverage automations that need 🟡 asset work first; or medium-leverage but ✅ ready.
-- **Do Later (Days 61–90+):** lower-leverage or 🔴 missing-asset automations; sequenced for the second half of the install.
-For each item: one line — what we're automating + the expected unlock (hours back, $ moved, capacity freed) + a candid launch window (not best-case).
-
-## Brand voice appendix (brief)
-2–3 lines on how automations should sound, from the brand voice data.
-
-Function id → label map: ${BUSINESS_FUNCTIONS.map((f) => `${f.id}=${f.label}`).join("; ")}.${feedbackBlock}
-
-## Operations data
-${opsBlock}`;
-
-  let content = "";
-  try {
-    const streamResp = await openai.chat.completions.create({
-      model: LLM_MODEL,
-      max_tokens: 4096,
-      stream: true,
-      messages: [{ role: "user", content: prompt }],
-    });
-    for await (const chunk of streamResp) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
-        content += delta;
-        onChunk?.(delta);
-      }
-    }
-  } catch (err: any) {
-    return { ok: false, error: err.message || "Map generation failed" };
-  }
-  if (!content.trim()) return { ok: false, error: "Generation returned no content." };
-
-  const { data: latest } = await supabaseAdmin
-    .from("brand_profiles")
-    .select("version")
-    .eq("client_id", userId)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextVersion = (latest?.version ?? 0) + 1;
-
-  const { error } = await supabaseAdmin.from("brand_profiles").insert({
-    client_id: userId,
-    version: nextVersion,
-    content,
-    status: "ready",
-    generated_at: Date.now(),
-  });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, content, version: nextVersion };
-}
-
-async function approveAutomationMap(userId: string) {
-  const { data: latest } = await supabaseAdmin
-    .from("brand_profiles")
-    .select("id")
-    .eq("client_id", userId)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!latest) return { ok: false, error: "No automation map to approve." };
-  const nowMs = Date.now();
-  const { error: pErr } = await supabaseAdmin
-    .from("brand_profiles")
-    .update({ status: "approved", approved_at: nowMs, approved_by: userId })
-    .eq("id", latest.id);
-  if (pErr) return { ok: false, error: pErr.message };
-  await advancePast(userId, "automationMap");
-  return { ok: true };
-}
-
 async function completeOnboarding(userId: string, transcript: IncomingMessage[]) {
   const { error } = await supabaseAdmin
     .from("clients")
@@ -669,8 +510,7 @@ function buildNextAction(
   client: any,
   intake: Record<string, any>,
   uploadCounts: { brand: number; knowledge: number },
-  callBooked: boolean,
-  latestProfile: any
+  callBooked: boolean
 ): string {
   const step = client?.onboarding_step ?? 1;
   const current = SECTIONS[Math.min(step - 1, SECTIONS.length - 1)];
@@ -749,14 +589,7 @@ function buildNextAction(
       if (client?.status === "active") {
         return `Onboarding is fully complete. Respond warmly and briefly to anything further.`;
       }
-      if (!latestProfile) {
-        return `${purpose(current)} Tell them you're building their automation map now, then call generate_automation_map({feedback:null}).`;
-      }
-      if (latestProfile.status !== "approved") {
-        return `${purpose(current)} The map (v${latestProfile.version}) is rendered. Ask them to reply "approve" or describe changes. If approved → approve_automation_map. If changes → generate_automation_map({feedback:"<their words>"}).`;
-      }
-      // Map approved but client not yet active → finish.
-      return `${purpose(current)} The automation map is approved. Call complete_onboarding now, then write a short warm congratulations (3–4 sentences).`;
+      return `${purpose(current)} Tell them you're generating their profile documents now, then call generate_profile_documents({feedback:null}). After it returns, call complete_onboarding and write a short warm congratulations (3–4 sentences).`;
 
     default:
       if (client?.status !== "active") {
@@ -855,14 +688,6 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     const intake = (intakeRow ?? {}) as Record<string, any>;
 
-    const { data: latestProfile } = await supabaseAdmin
-      .from("brand_profiles")
-      .select("id, version, status")
-      .eq("client_id", user.id)
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
     const { data: docs } = await supabaseAdmin
       .from("documents")
       .select("type")
@@ -886,7 +711,7 @@ export async function POST(req: NextRequest) {
     const nextActionBlock =
       current?.kind === "narrative"
         ? narrativeNextAction(current, intake)
-        : buildNextAction(client, intake, uploadCounts, callBooked, latestProfile);
+        : buildNextAction(client, intake, uploadCounts, callBooked);
 
     const knownLines: string[] = [];
     if (client?.name) knownLines.push(`- full name: ${JSON.stringify(client.name)}`);
@@ -977,8 +802,7 @@ export async function POST(req: NextRequest) {
               else if (tc.name === "add_repeatable_row") reasoningLabel = `Saving a ${sectionLabel(parsed.section_id).toLowerCase()} entry`;
               else if (tc.name === "complete_repeatable_section") reasoningLabel = `Locking in ${sectionLabel(parsed.section_id).toLowerCase()}`;
               else if (tc.name === "complete_section_1") reasoningLabel = "Saving your contact preferences";
-              else if (tc.name === "generate_automation_map") reasoningLabel = "Building your automation map";
-              else if (tc.name === "approve_automation_map") reasoningLabel = "Approving your automation map";
+              else if (tc.name === "generate_profile_documents") reasoningLabel = "Generating your profile documents";
               else if (tc.name === "show_uploader") reasoningLabel = "Opening the upload panel";
               else if (tc.name === "complete_uploader_section") reasoningLabel = "Locking in your files";
               else if (tc.name === "confirm_call_booking") reasoningLabel = "Logging your kickoff call";
@@ -1017,20 +841,16 @@ export async function POST(req: NextRequest) {
                 } else if (tc.name === "complete_schedule_calls_section") {
                   result = await completeScheduleCallsSection(user.id);
                   label = "Kickoff scheduled";
-                } else if (tc.name === "generate_automation_map") {
-                  emit({ type: "text", delta: parsed.feedback ? "\n\nRegenerating your map with that feedback — one moment.\n\n" : "\n\nBuilding your Business Process & Automation Map now — this takes 20–30 seconds.\n\n" });
-                  const gen = await generateAutomationMap(user.id, parsed.feedback ?? null, (delta) => emit({ type: "text", delta }));
-                  if (gen.ok) {
-                    emit({ type: "text", delta: "\n\n" });
-                    result = { ok: true, note: "Map rendered. Do NOT repeat it. Ask the client to reply 'approve' or describe changes." };
-                    label = `Automation map v${gen.version}`;
+                } else if (tc.name === "generate_profile_documents") {
+                  emit({ type: "text", delta: "\n\nGenerating your profile documents now — this takes a moment.\n\n" });
+                  const { inserted, failed } = await runProfileDocsForClient(user.id);
+                  const total = inserted.length + failed.length;
+                  if (failed.length === 0) {
+                    result = { ok: true, note: `All ${inserted.length} profile documents generated. Tell the client their documents are ready and the Rawgrowth team will review them, then call complete_onboarding.` };
                   } else {
-                    emit({ type: "error", message: gen.error });
-                    result = { ok: false, error: gen.error };
+                    result = { ok: true, note: `${inserted.length} of ${total} profile documents generated; ${failed.length} need a retry by the team (${failed.map((f) => f.type).join(", ")}). Reassure the client most are ready and the team will finish the rest, then call complete_onboarding.` };
                   }
-                } else if (tc.name === "approve_automation_map") {
-                  result = await approveAutomationMap(user.id);
-                  label = "Automation map approved";
+                  label = `Profile docs (${inserted.length}/${total})`;
                 } else if (tc.name === "complete_onboarding") {
                   result = await completeOnboarding(user.id, incoming);
                   label = "Onboarding complete";
