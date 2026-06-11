@@ -2,6 +2,8 @@ import { requireAdmin } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import Link from 'next/link';
 import ImpersonateButton from '@/components/ImpersonateButton';
+import PacketButton from '@/components/PacketButton';
+import { DOC_TYPES } from '@/lib/docs/types';
 import { ClientDetailInteractive } from './client-detail-interactive';
 
 const STEP_NAMES: Record<number, string> = {
@@ -32,6 +34,21 @@ export default async function ClientDetailPage({
   if (!client) return <div>Client not found</div>;
 
   const isComplete = client.status === 'active';
+
+  // Deployment packet is enabled only when all 10 profile docs are approved.
+  const { data: approvedDocs } = await supabaseAdmin
+    .from('client_profile_documents')
+    .select('type, approved_at, version')
+    .eq('client_id', id)
+    .order('version', { ascending: false });
+  const approvedTypes = new Set<string>();
+  const seenDocTypes = new Set<string>();
+  for (const d of approvedDocs ?? []) {
+    if (seenDocTypes.has(d.type)) continue;
+    seenDocTypes.add(d.type);
+    if (d.approved_at) approvedTypes.add(d.type);
+  }
+  const docsReady = DOC_TYPES.every((t) => approvedTypes.has(t));
 
   // Brand profile (latest version)
   const { data: brandProfile } = await supabaseAdmin
@@ -100,6 +117,14 @@ export default async function ClientDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href={`/admin/clients/${id}/docs`}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:border-[rgba(12,191,106,0.4)]"
+            style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            Profile Documents
+          </Link>
+          <PacketButton clientId={id} ready={docsReady} />
           <ImpersonateButton clientId={id} />
           {brandProfile && (
             <Link
