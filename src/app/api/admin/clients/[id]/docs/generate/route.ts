@@ -3,6 +3,9 @@ import { getAuthUser } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { runProfileDocsForClient } from "@/lib/docs/generate-all";
 
+// 10 parallel LLM calls — allow up to 5 min (NF-01 budget is 60s, headroom for retries).
+export const maxDuration = 300;
+
 // Admin-initiated generation / retry of the 10 profile documents (FC-02 / FC-08).
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const actor = await getAuthUser();

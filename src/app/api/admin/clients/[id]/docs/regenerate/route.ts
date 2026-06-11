@@ -5,6 +5,9 @@ import { DOC_TYPES, DOC_TITLES, type DocType } from "@/lib/docs/types";
 import { GENERATORS, buildSubmission } from "@/lib/docs/generate-all";
 import { runDocLLM } from "@/lib/docs/llm";
 
+// LLM gen + revision pass — allow generous headroom.
+export const maxDuration = 300;
+
 const REVISE_SYSTEM = `You are revising a generated business document. Apply the admin's feedback while keeping the document's structure and Markdown formatting. Output only the revised document in clean GitHub-flavored Markdown — no preamble, no code fences.`;
 
 // FC-05: admin regenerates one doc type with feedback. Writes a new version with
