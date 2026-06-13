@@ -470,6 +470,28 @@ async function completeScheduleCallsSection(userId: string) {
   return { ok: true };
 }
 
+// Required intake sources before finalization. Object-type sources must be a
+// non-empty object; array-type sources must be a non-empty array. Mirrors the
+// old automation-map guard so generate_profile_documents can't finalize with
+// sections the bot skipped (e.g. guardrails / brand voice — the Cassidy drift).
+const REQUIRED_OBJECT_SECTIONS = ["companySnapshot", "functionSelector", "goals", "guardrails", "market", "brandVoice"] as const;
+const REQUIRED_ARRAY_SECTIONS = ["functionDeepDives", "toolStack", "people", "accessInventory"] as const;
+
+async function missingIntakeSections(userId: string): Promise<string[]> {
+  const { data: intake } = await supabaseAdmin
+    .from("brand_intakes")
+    .select("*")
+    .eq("client_id", userId)
+    .maybeSingle();
+  const i = (intake ?? {}) as Record<string, any>;
+  const isEmptyObj = (v: any) => !v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length === 0;
+  const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
+  const missing: string[] = [];
+  for (const s of REQUIRED_OBJECT_SECTIONS) if (isEmptyObj(i[INTAKE_COLUMNS[s]])) missing.push(s);
+  for (const s of REQUIRED_ARRAY_SECTIONS) if (isEmptyArr(i[INTAKE_COLUMNS[s]])) missing.push(s);
+  return missing;
+}
+
 async function completeOnboarding(userId: string, transcript: IncomingMessage[]) {
   const { error } = await supabaseAdmin
     .from("clients")
@@ -842,6 +864,13 @@ export async function POST(req: NextRequest) {
                   result = await completeScheduleCallsSection(user.id);
                   label = "Kickoff scheduled";
                 } else if (tc.name === "generate_profile_documents") {
+                  const missing = await missingIntakeSections(user.id);
+                  if (missing.length > 0) {
+                    result = {
+                      ok: false,
+                      error: `BLOCKED: cannot generate profile documents — these required sections are still empty: ${missing.join(", ")}. Go back to each one, run the depth gate, and persist it (save_narrative_section for narrative sections, add_repeatable_row + complete_repeatable_section for repeatables) before retrying generate_profile_documents.`,
+                    };
+                  } else {
                   emit({ type: "text", delta: "\n\nGenerating your profile documents now — this takes a moment.\n\n" });
                   const { inserted, failed } = await runProfileDocsForClient(user.id);
                   const total = inserted.length + failed.length;
@@ -851,6 +880,7 @@ export async function POST(req: NextRequest) {
                     result = { ok: true, note: `${inserted.length} of ${total} profile documents generated; ${failed.length} need a retry by the team (${failed.map((f) => f.type).join(", ")}). Reassure the client most are ready and the team will finish the rest, then call complete_onboarding.` };
                   }
                   label = `Profile docs (${inserted.length}/${total})`;
+                  }
                 } else if (tc.name === "complete_onboarding") {
                   result = await completeOnboarding(user.id, incoming);
                   label = "Onboarding complete";
