@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import Link from 'next/link';
 import ImpersonateButton from '@/components/ImpersonateButton';
 import PacketButton from '@/components/PacketButton';
+import MatchTrainingButton from '@/components/MatchTrainingButton';
 import { DOC_TYPES } from '@/lib/docs/types';
 import { ClientDetailInteractive } from './client-detail-interactive';
 
@@ -125,6 +126,7 @@ export default async function ClientDetailPage({
             Profile Documents
           </Link>
           <PacketButton clientId={id} ready={docsReady} />
+          <MatchTrainingButton clientId={id} />
           <ImpersonateButton clientId={id} />
           {brandProfile && (
             <Link
