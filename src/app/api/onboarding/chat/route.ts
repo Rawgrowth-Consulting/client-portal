@@ -607,11 +607,24 @@ function buildNextAction(
       }
       return `${purpose(current)} Call confirmed. Call complete_schedule_calls_section.`;
 
-    case "automationMap":
+    case "automationMap": {
       if (client?.status === "active") {
         return `Onboarding is fully complete. Respond warmly and briefly to anything further.`;
       }
+      // Don't push finalization while required sections are still empty — send
+      // the bot back to collect them first (prevents a generate→blocked loop).
+      const isEmptyObj = (v: any) => !v || typeof v !== "object" || Array.isArray(v) || Object.keys(v).length === 0;
+      const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
+      const missing = [
+        ...REQUIRED_OBJECT_SECTIONS.filter((s) => isEmptyObj(intake[INTAKE_COLUMNS[s]])),
+        ...REQUIRED_ARRAY_SECTIONS.filter((s) => isEmptyArr(intake[INTAKE_COLUMNS[s]])),
+      ];
+      if (missing.length > 0) {
+        const next = SECTIONS.find((s) => s.id === missing[0]);
+        return `Before finalizing, these sections are still empty: ${missing.join(", ")}. Go back to "${next?.label ?? missing[0]}" now — interview them, run the depth gate, and persist it before any other section. Do NOT call generate_profile_documents yet.`;
+      }
       return `${purpose(current)} Tell them you're generating their profile documents now, then call generate_profile_documents({feedback:null}). After it returns, call complete_onboarding and write a short warm congratulations (3–4 sentences).`;
+    }
 
     default:
       if (client?.status !== "active") {
